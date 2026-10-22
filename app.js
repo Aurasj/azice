@@ -1,5 +1,5 @@
 import { createDemo } from './demo.js';
-import { createCloud } from './cloud.js';
+import { createCloud, isSessionMissingOrInvalid } from './cloud.js';
 const $ = s => document.querySelector(s);
 const config = window.AZICE_CONFIG || {};
 const incomingInvite = new URLSearchParams(location.search).get('invite');
@@ -39,12 +39,37 @@ async function loadSupabase(){
 }
 async function boot(){
  try {
-   api=await loadSupabase();state.demo=api.mode==='demo';state.user=await api.getUser();
-   if(!state.user){state.view='auth';render();return;}
+   api=await loadSupabase();
+   state.demo=api.mode==='demo';
+   state.user=await api.getUser();
+   if(!state.user){
+     state.view='auth';
+     render();
+     return;
+   }
    const profile=await api.getMyProfile();
-   if(!profile){state.view='onboard';render();return;}
-   state.profile=profile;await home();
- } catch(e) {console.error(e);$('#app').innerHTML=`<main class="centered"><div class="brand">AziCe<span>?</span></div><p>App could not start.</p><p class="muted">${html(e.message)}</p><button class="primary" onclick="location.reload()">Try Again</button></main>`;}
+   if(!profile){
+     state.view='onboard';
+     render();
+     return;
+   }
+   state.profile=profile;
+   const pending=savedInvite();
+   if(pending){
+     try {
+       state.invitePreview=await api.previewInvite(pending);
+       state.view='invite';
+       render();
+       return;
+     } catch(e) {
+       showToast(e.message);
+     }
+   }
+   await home();
+ } catch(e) {
+   console.error(e);
+   $('#app').innerHTML=`<main class="centered"><div class="brand">AziCe<span>?</span></div><p>App could not start.</p><p class="muted">${html(e.message)}</p><button class="primary" onclick="location.reload()">Try Again</button></main>`;
+ }
 }
 async function hydrate(posts){
  const ids=[...new Set(posts.filter(p=>!p.author).map(p=>p.author_id))];
@@ -56,9 +81,14 @@ async function openProfile(){state.profile=await api.getMyProfile();state.histor
 async function openFriendProfile(id){const p=await api.getProfile(id);if(!p)throw Error('Profile unavailable');state.target=p;state.history=await hydrate(await api.getHistory(id));state.view='friendProfile';render();}
 async function openFriends(){state.friends=await api.friendData();state.inviteToken=await api.getInvite();state.view='friends';render();}
 function brand(){return `<div class="brand">AziCe<span>?</span></div>`;}
+function headerAvatar(){
+ const p=state.profile;const path=p?.avatar_path;
+ const src=path?(path.startsWith('data:')?path:(path.startsWith('avatar:')?path:`avatar:${path}`)):null;
+ return `<button aria-label="Open profile" class="avatar mini" data-action="profile">${src?`<img data-private-photo="${html(src)}" alt="${html(p?.display_name||'User')} avatar">`:initials(p?.display_name)}</button>`;
+}
 function shell(content, tab='feed'){
  return `<div class="app-shell">
-  <header class="header">${brand()}<button aria-label="Open profile" class="avatar mini" data-action="profile">${initials(state.profile?.display_name)}</button></header>
+  <header class="header">${brand()}${headerAvatar()}</header>
   ${state.demo?'<div class="demo-banner">DEMO MODE · Only on this device · No real friends connected</div>':''}
   <main class="content">${content}</main>
   <nav class="bottom-nav" aria-label="Main navigation">
@@ -121,7 +151,8 @@ function profileView(){
  const p=state.profile;return shell(`${profileHeader(p,true)}<button class="wide-outline" data-action="friends">♧ Friends & Invites →</button>
  ${monthGrid()}<div class="section-heading"><h2>Recent Posts</h2><span>${state.history.length} posts</span></div>
  ${state.history.length?state.history.slice(0,8).map(postCard).join(''):'<div class="empty-small">Your memories will appear here.</div>'}
- <div class="profile-actions"><button class="text-button" data-action="install">Install App</button><button class="text-button" data-action="sign-out">Sign Out</button>${state.demo?'<button class="text-button" data-action="reset-demo">Reset Demo</button>':''}</div>`,'profile');
+ <div class="profile-actions"><button class="text-button" data-action="install">Install App</button><button class="text-button" data-action="sign-out">Sign Out</button>${state.demo?'<button class="text-button" data-action="reset-demo">Reset Demo</button>':'<button class="text-button danger-text" data-action="delete-account">Delete Account</button>'}</div>
+ <p class="privacy-contact">Safety & Privacy: Contact <b>privacy@azice.aagameri.tech</b> for content removal or takedown assistance.</p>`,'profile');
 }
 function friendProfileView(){const p=state.target;return shell(`${backBar('Profile','friends')}${profileHeader(p)}<div class="section-heading"><h2>Last 30 Days</h2></div>${state.history.length?state.history.map(postCard).join(''):'<div class="empty-small">No recent posts to show.</div>'}`,'profile');}
 function dayView(){const posts=state.history.filter(p=>dayISO(p.published_at)===state.selectedDate);const title=new Date(`${state.selectedDate}T12:00:00`).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});return shell(`${backBar(title)}<div class="section-heading"><h2>Your Memories</h2><span>${posts.length} posts</span></div>${posts.length?posts.map(postCard).join(''):'<div class="empty-small">Nothing posted on this day.</div>'}`,'profile');}
@@ -137,8 +168,8 @@ function friendsView(){
  ${f.friends.length?f.friends.map(p=>friendRow(p,`<button class="small-secondary" data-action="friend-profile" data-id="${html(p.id)}">View</button><button class="small-danger" data-action="unfriend" data-id="${html(p.id)}">Remove</button>`)).join(''):'<p class="muted small-text">Your friends will appear here.</p>'}`,'profile');
 }
 function authView(){const signup=state.authSignUp;return `<main class="centered auth-screen">${brand()}<p class="tagline">Every day has a story.</p><div class="auth-panel"><h1>${signup?'Create your account':'Welcome back'}</h1><p>${signup?'Join the crew. Just be yourself.':'See what the crew is up to.'}</p><form id="auth-form"><label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label><label>Password<input name="password" type="password" minlength="6" autocomplete="${signup?'new-password':'current-password'}" required placeholder="At least 6 characters"></label><button class="primary" type="submit">${signup?'Sign Up':'Sign In'}</button></form><div class="or">or</div><button class="wide-outline" data-action="google">Continue with Google</button><p class="auth-switch">${signup?'Already have an account?':'New here?'} <button class="inline-link" data-action="toggle-auth">${signup?'Sign In':'Sign Up'}</button></p></div>${state.demo?'<div class="demo-banner auth-demo">Preview mode — Supabase is not configured. Explore the interface locally.</div><button class="secondary" data-action="demo-enter">Explore Demo</button>':''}</main>`;}
-function onboardView(){return `<main class="centered auth-screen">${brand()}<p class="tagline">One last thing...</p><div class="auth-panel"><h1>Set up your profile</h1><p>Your story, your identity.</p><form id="onboard-form"><label>Display Name<input name="display_name" maxlength="60" required placeholder="Alex"></label><label>Username<input name="username" pattern="[a-z0-9_]{3,24}" required maxlength="24" placeholder="alex_22" autocomplete="off"></label><label class="checkline"><input name="adult" type="checkbox" required> I confirm I am at least 18 years old.</label><button class="primary" type="submit">Let's Go →</button></form></div></main>`;}
-function editProfileView(){const p=state.profile;return shell(`${backBar('Edit Profile')}<form id="edit-profile" class="edit-form"><div class="profile-avatar-center">${avatar(p,'large')}<label class="gallery-label">Choose from Gallery<input type="file" accept="image/*" id="avatar-input" hidden></label></div><label>Display Name<input name="display_name" required maxlength="60" value="${html(p.display_name)}"></label><label>Username<input name="username" required pattern="[a-z0-9_]{3,24}" maxlength="24" value="${html(p.username)}"></label><label>Bio<textarea name="bio" maxlength="150" rows="3" placeholder="Tell your story...">${html(p.bio||'')}</textarea><small>Max. 150 characters</small></label><button class="primary" type="submit">Save Changes</button></form>`,'profile');}
+function onboardView(){return `<main class="centered auth-screen">${brand()}<p class="tagline">One last thing...</p><div class="auth-panel"><h1>Set up your profile</h1><p>Your story, your identity.</p><form id="onboard-form"><label>Display Name<input name="display_name" maxlength="60" required placeholder="Alex"></label><label>Username<input name="username" pattern="[a-zA-Z0-9_]{3,24}" required maxlength="24" placeholder="alex_22" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label><label class="checkline"><input name="adult" type="checkbox" required> I confirm I am at least 18 years old.</label><button class="primary" type="submit">Let's Go →</button></form></div></main>`;}
+function editProfileView(){const p=state.profile;return shell(`${backBar('Edit Profile')}<form id="edit-profile" class="edit-form"><div class="profile-avatar-center">${avatar(p,'large')}<label class="gallery-label">Choose from Gallery<input type="file" accept="image/*" id="avatar-input" hidden></label></div><label>Display Name<input name="display_name" required maxlength="60" value="${html(p.display_name)}"></label><label>Username<input name="username" required pattern="[a-zA-Z0-9_]{3,24}" maxlength="24" value="${html(p.username)}" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label><label>Bio<textarea name="bio" maxlength="150" rows="3" placeholder="Tell your story...">${html(p.bio||'')}</textarea><small>Max. 150 characters</small></label><button class="primary" type="submit">Save Changes</button></form>`,'profile');}
 function newPostView(){const d=state.draft;
  let content='';
  if(d.step===0)content=`<h1>What's the story today?</h1><p class="muted">Choose one. No pressure either way.</p><div class="choice-grid"><button class="choice ${d.kind==='drank'?'chosen':''}" data-action="choose-kind" data-value="drank"><span>🍺</span>I Drank</button><button class="choice ${d.kind==='sober'?'chosen':''}" data-action="choose-kind" data-value="sober"><span>🧃</span>I Didn't Drink</button></div>`;
@@ -148,7 +179,7 @@ function newPostView(){const d=state.draft;
  return shell(`${backBar('New Post','cancel-post')}<div class="step-indicator">STEP ${d.step+1} OF 4</div><div class="new-post">${content}</div><div class="post-actions">${d.step>0?'<button class="secondary" data-action="post-back">Back</button>':''}<button class="primary" data-action="post-next">${d.step===3?'Publish Post':'Continue →'}</button></div>`,'feed');
 }
 function cameraView(){return `<main class="camera-screen"><div class="camera-header"><button data-action="close-camera" aria-label="Close camera">×</button><span>Take Photo</span><button data-action="flip-camera" aria-label="Switch camera">⟳</button></div>${state.cameraError?`<div class="camera-error">${html(state.cameraError)}</div>`:'<video id="camera-preview" autoplay playsinline muted></video>'}<div class="camera-footer"><span>${state.draft.files.length}/3 photos</span><button class="shutter" data-action="capture-photo" aria-label="Capture photo"></button><span>Camera only</span></div></main>`;}
-function inviteView(preview){return `<main class="centered auth-screen">${brand()}<div class="auth-panel"><h1>Friend Invitation</h1>${preview?`<p><b>${html(preview.display_name)}</b> invited you to connect on AziCe?.</p><p class="muted">@${html(preview.username)} · Posts remain private until accepted.</p><button class="primary" data-action="send-request">Send Friend Request</button>`:'<p>This invite link has expired or was revoked.</p>'}<button class="secondary" data-action="feed">Go to Feed</button></div></main>`;}
+function inviteView(preview){return `<main class="centered auth-screen">${brand()}<div class="auth-panel"><h1>Friend Invitation</h1>${preview?`<p><b>${html(preview.display_name)}</b> invited you to connect on AziCe?.</p><p class="muted">@${html(preview.username)} · Posts remain private until accepted.</p><button class="primary" data-action="send-request">Send Friend Request</button>`:'<p>This invite link has expired or was revoked.</p>'}<button class="secondary" data-action="dismiss-invite">Go to Feed</button></div></main>`;}
 function installInfo(){return `<div class="modal-backdrop" data-action="close-install"><div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()"><h2>Install AziCe?</h2><p>On iPhone: open in Safari, tap Share, then <b>Add to Home Screen</b> and enable <b>Open as Web App</b> if offered.</p><p>On Android: open the browser menu and select <b>Install app</b> or <b>Add to Home screen</b>.</p><button class="primary" data-action="close-install">Got It</button></div></div>`;}
 function render(){
  const root=$('#app');
@@ -210,10 +241,10 @@ async function galleryAvatar(file){
 async function refreshPosts(){if(state.view==='feed')state.feed=await hydrate(await api.getFeed());else if(['profile','friendProfile','day'].includes(state.view))state.history=await hydrate(await api.getHistory(state.view==='friendProfile'?state.target.id:state.user.id));render();}
 async function handleAction(button){const a=button.dataset.action,id=button.dataset.id,val=button.dataset.value;
  switch(a){
- case 'feed': await home();break;
- case 'profile':await openProfile();break;
- case 'friends':await openFriends();break;
- case 'friend-profile':await openFriendProfile(id);break;
+ case 'feed': stopCamera();await home();break;
+ case 'profile':stopCamera();await openProfile();break;
+ case 'friends':stopCamera();await openFriends();break;
+ case 'friend-profile':stopCamera();await openFriendProfile(id);break;
  case 'start-post':state.draft={kind:'drank',reason:'',files:[],step:0};state.view='new';render();break;
  case 'cancel-post':stopCamera();state.draft.files=[];await home();break;
  case 'choose-kind':state.draft.kind=val;render();break;
@@ -221,8 +252,30 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
  case 'post-next':{
   const d=state.draft;
   if(d.step===1&&d.kind==='drank'&&!d.files.length)throw Error('Take at least one photo to continue.');
-  if(d.step===2&&!d.reason.trim())throw Error('Your reason is required.');
-  if(d.step===3){if(!confirm('Publish this post? You cannot edit it later.'))return;button.disabled=true;button.textContent='Publishing...';try{await api.createPost(d.kind,d.reason.trim(),d.files);d.files=[];showToast('Post published!');await home();}finally{button.disabled=false;}return;}
+  if(d.step===2){
+    const reasonEl=$('#post-reason');
+    if(reasonEl)d.reason=reasonEl.value.slice(0,300);
+    if(!d.reason.trim())throw Error('Your reason is required.');
+  }
+  if(d.step===3){
+    if(button.disabled)return; // prevent duplicate publish on rapid taps
+    if(!confirm('Publish this post? You cannot edit it later.'))return;
+    button.disabled=true;button.textContent='Publishing...';
+    try{
+      await api.createPost(d.kind,d.reason.trim(),d.files);
+      // Success: clear draft and go to feed
+      d.files=[];d.reason='';d.step=0;
+      showToast('Post published!');
+      await home();
+    }catch(err){
+      // Failure: restore UI so user can retry with their photos and reason preserved
+      button.disabled=false;button.textContent='Publish Post';
+      // Do NOT clear d.files or d.reason — user keeps their work
+      showToast(err.message||'Failed to publish. Please try again.');
+      console.error('[publish] error:', err);
+    }
+    return;
+  }
   d.step+=1;render();break;
  }
  case 'open-camera':await startCamera();break;
@@ -248,18 +301,32 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
  }
  case 'rotate-invite':if(confirm('Create a new invitation link? Your previous link will stop working.')){state.inviteToken=await api.rotateInvite();render();showToast('New invitation link created.');}break;
  case 'send-request':await api.sendRequest(savedInvite());sessionStorage.removeItem('azice_pending_invite');history.replaceState({},'',location.pathname);await home();showToast('Friend request sent!');break;
+ case 'dismiss-invite':sessionStorage.removeItem('azice_pending_invite');history.replaceState({},'',location.pathname);await home();break;
  case 'toggle-auth':state.authSignUp=!state.authSignUp;render();break;
  case 'google':await api.google();break;
  case 'demo-enter':state.user=await api.getUser();state.profile=await api.getMyProfile();await home();break;
  case 'sign-out':await api.signOut();state.user=null;state.profile=null;state.view='auth';render();break;
  case 'reset-demo':if(confirm('Reset demo posts and comments?')){await api.resetDemo();await openProfile();showToast('Demo reset.');}break;
+ case 'delete-account':{
+   if(!confirm('Permanently delete your account? All your posts, photos, comments, and friendships will be completely erased. This cannot be undone.'))return;
+   if(!confirm('Are you absolutely sure? This action is permanent.'))return;
+   button.disabled=true;button.textContent='Deleting...';
+   try{await api.deleteAccount();state.user=null;state.profile=null;state.view='auth';render();showToast('Your account and data have been deleted.');}
+   finally{button.disabled=false;}
+   break;
+ }
  case 'install':if(state.installPrompt){await state.installPrompt.prompt();state.installPrompt=null;}else{state.installHelp=true;render();}break;
  case 'close-install':state.installHelp=false;render();break;
  }
 }
 document.addEventListener('click',async event=>{
  const btn=event.target.closest('[data-action]');if(!btn)return;
- event.preventDefault();try{await handleAction(btn);}catch(e){console.error(e);showToast(e.message||'Something went wrong.');}
+ event.preventDefault();
+ try{await handleAction(btn);}catch(e){
+  console.error(e);
+  if(isSessionMissingOrInvalid(e)){state.user=null;state.profile=null;state.view='auth';render();showToast('Your session expired. Please sign in again.');}
+  else showToast(e.message||'Something went wrong.');
+ }
 });
 document.addEventListener('input',event=>{if(event.target.id==='post-reason'){state.draft.reason=event.target.value.slice(0,300);const c=$('#reason-counter');if(c)c.textContent=`${state.draft.reason.length}/300`;}});
 document.addEventListener('change',async event=>{if(event.target.id==='avatar-input'&&event.target.files?.[0])try{await galleryAvatar(event.target.files[0]);}catch(e){showToast(e.message);}});
@@ -269,7 +336,12 @@ document.addEventListener('submit',async event=>{
   if(form.id==='auth-form'){
    const res=state.authSignUp?await api.signUp(values.email,values.password):await api.signIn(values.email,values.password);
    if(!res){showToast('Check your email for a confirmation link.');return;}
-   state.user=res;state.profile=await api.getMyProfile();state.view=state.profile?'feed':'onboard';if(state.profile)await home();else render();
+   state.user=res;state.profile=await api.getMyProfile();state.view=state.profile?'feed':'onboard';
+   if(state.profile){
+     const pending=savedInvite();
+     if(pending){try{state.invitePreview=await api.previewInvite(pending);state.view='invite';}catch(e){showToast(e.message);}}
+     if(state.view!=='invite')await home();else render();
+   }else render();
   } else if(form.id==='onboard-form'){
    if(!values.adult)throw Error('You must be at least 18.');
    state.profile=await api.saveProfile({display_name:values.display_name.trim(),username:values.username.toLowerCase(),is_18_plus_confirmed:true});await home();const pending=savedInvite();if(pending){state.invitePreview=await api.previewInvite(pending);state.view='invite';render();}
@@ -286,6 +358,4 @@ window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();sta
 if('serviceWorker' in navigator&&['http:','https:'].includes(location.protocol))navigator.serviceWorker.register('/sw.js').catch(()=>{});
 (async()=>{
  state.view='loading';render();await boot();
- const token=savedInvite();
- if(token&&state.user&&state.profile){try{state.invitePreview=await api.previewInvite(token);state.view='invite';render();}catch(e){showToast(e.message);}}
 })();

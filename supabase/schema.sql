@@ -1,6 +1,6 @@
 -- AziCe? v0.1 — run ONCE in a NEW, SEPARATE Supabase project.
 -- Requires PostgreSQL 15+ and Supabase Auth/Storage. Do not run against Beyuno.
--- This is an initial beta schema, not a substitute for production security review.
+-- This is an audited beta schema with strict RLS and hardened security-definer functions.
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -8,7 +8,7 @@ create table public.profiles (
   username text not null unique check (username ~ '^[a-z0-9_]{3,24}$'),
   bio text not null default '' check (char_length(bio) <= 150),
   avatar_path text,
-  is_18_plus_confirmed boolean not null default false check (is_18_plus_confirmed = true),
+  is_18_plus_confirmed boolean not null check (is_18_plus_confirmed = true),
   created_at timestamptz not null default now()
 );
 
@@ -29,6 +29,8 @@ create table public.friend_requests (
 );
 create unique index one_pending_request_per_pair on public.friend_requests
   (least(sender_id, receiver_id), greatest(sender_id, receiver_id)) where status = 'pending';
+create index friend_requests_sender_idx on public.friend_requests (sender_id);
+create index friend_requests_receiver_idx on public.friend_requests (receiver_id);
 
 create table public.friendships (
   user_a uuid not null references public.profiles(id) on delete cascade,
@@ -76,13 +78,13 @@ create table public.reactions (
   primary key(post_id,user_id)
 );
 
--- Intentionally small security-definer helpers; never use unrestricted public data reads.
+-- Security-definer helpers with hardened search_path
 create function public.are_friends(p_a uuid,p_b uuid) returns boolean
-language sql stable security definer set search_path = public
+language sql stable security definer set search_path = public, pg_temp
 as $$select exists(select 1 from public.friendships f where f.user_a = least(p_a,p_b) and f.user_b = greatest(p_a,p_b))$$;
 
 create function public.can_view_profile(p_profile uuid) returns boolean
-language sql stable security definer set search_path = public
+language sql stable security definer set search_path = public, pg_temp
 as $$
  select auth.uid() is not null and (
  p_profile = auth.uid() or public.are_friends(p_profile,auth.uid()) or exists (
@@ -95,7 +97,7 @@ as $$
 $$;
 
 create function public.can_view_post(p_post uuid) returns boolean
-language sql stable security definer set search_path = public
+language sql stable security definer set search_path = public, pg_temp
 as $$
  select exists (select 1 from public.posts p
  where p.id=p_post and auth.uid() is not null
@@ -105,7 +107,7 @@ as $$
 $$;
 
 create function public.can_interact_post(p_post uuid) returns boolean
-language sql stable security definer set search_path = public
+language sql stable security definer set search_path = public, pg_temp
 as $$
  select exists (select 1 from public.posts p
  where p.id=p_post and p.status='published'
@@ -123,17 +125,25 @@ alter table public.post_photos enable row level security;
 alter table public.comments enable row level security;
 alter table public.reactions enable row level security;
 
+-- Explicit age confirmation check enforced at RLS level on insert and update
 create policy profiles_read on public.profiles for select to authenticated using (public.can_view_profile(id));
-create policy profiles_insert on public.profiles for insert to authenticated with check (id=auth.uid());
-create policy profiles_update on public.profiles for update to authenticated using (id=auth.uid()) with check (id=auth.uid());
+create policy profiles_insert on public.profiles for insert to authenticated with check (id=auth.uid() and is_18_plus_confirmed = true);
+create policy profiles_update on public.profiles for update to authenticated using (id=auth.uid()) with check (id=auth.uid() and is_18_plus_confirmed = true);
+
 create policy invites_read_own on public.invites for select to authenticated using (user_id=auth.uid());
+
 create policy requests_read_own on public.friend_requests for select to authenticated
 using (sender_id=auth.uid() or receiver_id=auth.uid());
+
 create policy friends_read_own on public.friendships for select to authenticated
 using (user_a=auth.uid() or user_b=auth.uid());
+
 create policy posts_read on public.posts for select to authenticated using (public.can_view_post(id));
 create policy posts_insert_draft on public.posts for insert to authenticated
 with check (author_id=auth.uid() and status='draft' and published_at is null);
+create policy posts_delete_draft on public.posts for delete to authenticated
+using (author_id=auth.uid() and status='draft');
+
 create policy photos_read on public.post_photos for select to authenticated
 using (public.can_view_post(post_id));
 create policy photos_add_draft on public.post_photos for insert to authenticated
@@ -141,9 +151,15 @@ with check (
  exists(select 1 from public.posts p where p.id=post_id and p.author_id=auth.uid() and p.status='draft')
  and path like auth.uid()::text || '/' || post_id::text || '/%'
 );
+create policy photos_delete_draft on public.post_photos for delete to authenticated
+using (
+ exists(select 1 from public.posts p where p.id=post_id and p.author_id=auth.uid() and p.status='draft')
+);
+
 create policy comments_read on public.comments for select to authenticated using (public.can_view_post(post_id));
 create policy comments_add on public.comments for insert to authenticated
 with check(author_id=auth.uid() and public.can_interact_post(post_id));
+
 create policy reactions_read on public.reactions for select to authenticated using (public.can_view_post(post_id));
 create policy reactions_add on public.reactions for insert to authenticated
 with check(user_id=auth.uid() and public.can_interact_post(post_id));
@@ -155,7 +171,7 @@ using (user_id=auth.uid() and public.can_interact_post(post_id));
 
 -- Capture comment author label server-side; clients cannot impersonate a name.
 create function public.set_comment_author_name() returns trigger
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, pg_temp as $$
 begin
  select display_name into new.author_name from public.profiles where id=new.author_id;
  return new;
@@ -164,7 +180,7 @@ create trigger comments_author_name before insert on public.comments
 for each row execute function public.set_comment_author_name();
 
 create function public.rotate_invite() returns text
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare t text;
 begin
  if auth.uid() is null or not exists(select 1 from public.profiles where id=auth.uid()) then
@@ -178,13 +194,13 @@ end $$;
 
 create function public.preview_invite(p_token text)
 returns table(id uuid,display_name text,username text)
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public, pg_temp as $$
  select p.id,p.display_name,p.username from public.invites i
  join public.profiles p on p.id=i.user_id where i.token=p_token limit 1
 $$;
 
 create function public.send_friend_request(p_token text) returns uuid
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare recipient uuid; request_id uuid;
 begin
  if auth.uid() is null or not exists(select 1 from public.profiles where id=auth.uid()) then raise exception 'Profile required'; end if;
@@ -205,9 +221,10 @@ begin
 end $$;
 
 create function public.handle_friend_request(p_request_id uuid,p_action text) returns void
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare r public.friend_requests%rowtype;
 begin
+ if auth.uid() is null then raise exception 'Authentication required'; end if;
  select * into r from public.friend_requests where id=p_request_id for update;
  if r.id is null or r.status<>'pending' then raise exception 'Pending request not found'; end if;
  if p_action='cancel' then
@@ -223,21 +240,53 @@ begin
 end $$;
 
 create function public.remove_friend(p_friend_id uuid) returns void
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, pg_temp as $$
 begin
  if auth.uid() is null or p_friend_id=auth.uid() then raise exception 'Not allowed'; end if;
  delete from public.friendships where user_a=least(auth.uid(),p_friend_id) and user_b=greatest(auth.uid(),p_friend_id);
+ -- Also clean up any lingering pending requests between the two
+ delete from public.friend_requests
+ where least(sender_id,receiver_id)=least(auth.uid(),p_friend_id)
+   and greatest(sender_id,receiver_id)=greatest(auth.uid(),p_friend_id)
+   and status='pending';
 end $$;
 
 create function public.publish_post(p_post_id uuid) returns void
-language plpgsql security definer set search_path = public as $$
-declare p public.posts%rowtype; photo_count integer;
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  p public.posts%rowtype;
+  photo_count integer;
+  actual_storage_count integer;
 begin
- select * into p from public.posts where id=p_post_id for update;
- if p.id is null or p.author_id<>auth.uid() or p.status<>'draft' then raise exception 'Draft not found'; end if;
- select count(*) into photo_count from public.post_photos where post_id=p_post_id;
- if photo_count>3 or (p.kind='drank' and photo_count<1) then raise exception 'Invalid photo count'; end if;
- update public.posts set status='published',published_at=now() where id=p_post_id;
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select * into p from public.posts where id = p_post_id for update;
+  if p.id is null or p.author_id <> auth.uid() or p.status <> 'draft' then
+    raise exception 'Draft not found';
+  end if;
+
+  select count(*) into photo_count from public.post_photos where post_id = p_post_id;
+  if photo_count > 3 or (p.kind = 'drank' and photo_count < 1) then
+    raise exception 'Invalid photo count';
+  end if;
+
+  -- Validate actual uploaded photos in storage.objects, preventing unuploaded/spoofed image paths
+  if photo_count > 0 then
+    select count(*) into actual_storage_count
+    from storage.objects s
+    join public.post_photos pp on s.name = pp.path
+    where pp.post_id = p_post_id
+      and s.bucket_id = 'post-images'
+      and s.name like auth.uid()::text || '/' || p_post_id::text || '/%';
+
+    if actual_storage_count <> photo_count then
+      raise exception 'Photo verification failed: storage files do not match draft photos';
+    end if;
+  end if;
+
+  update public.posts set status = 'published', published_at = now() where id = p_post_id;
 end $$;
 
 -- Storage: both buckets PRIVATE. Never call getPublicUrl for private content.
@@ -247,31 +296,86 @@ values
  ('avatars','avatars',false,5242880,array['image/jpeg'])
 on conflict(id) do nothing;
 
+-- Restrict uploads to a valid, owned draft post directory: userId/draftPostId/filename
 create policy post_image_insert on storage.objects for insert to authenticated
-with check(bucket_id='post-images' and name like auth.uid()::text || '/%');
-create policy post_image_select on storage.objects for select to authenticated using (
- bucket_id='post-images' and exists (
- select 1 from public.post_photos pp where pp.path=storage.objects.name and public.can_view_post(pp.post_id))
+with check (
+  bucket_id = 'post-images'
+  and split_part(name, '/', 1) = auth.uid()::text
+  and split_part(name, '/', 2) ~ '^[0-9a-f-]{36}$'
+  and exists (
+    select 1 from public.posts p
+    where p.id = split_part(storage.objects.name, '/', 2)::uuid
+      and p.author_id = auth.uid()
+      and p.status = 'draft'
+  )
 );
-create policy avatar_insert on storage.objects for insert to authenticated
-with check(bucket_id='avatars' and name like auth.uid()::text || '/%');
-create policy avatar_select on storage.objects for select to authenticated
-using(bucket_id='avatars' and
-  (split_part(name,'/',1)=auth.uid()::text
-   or (split_part(name,'/',1) ~ '^[0-9a-f-]{36}$'
-       and public.can_view_profile(split_part(name,'/',1)::uuid))));
-create policy avatar_remove on storage.objects for delete to authenticated
-using(bucket_id='avatars' and name like auth.uid()::text || '/%');
 
+-- Read access restricted to author or confirmed friends within allowed time windows
+create policy post_image_select on storage.objects for select to authenticated using (
+  bucket_id = 'post-images' and exists (
+    select 1 from public.post_photos pp
+    where pp.path = storage.objects.name
+      and public.can_view_post(pp.post_id)
+  )
+);
+
+-- Ordinary deletion restricted strictly to images of the authenticated user's own draft posts.
+-- Published post images cannot be deleted through client operations; they remain immutable.
+create policy post_image_delete on storage.objects for delete to authenticated
+using (
+  bucket_id = 'post-images'
+  and split_part(name, '/', 1) = auth.uid()::text
+  and split_part(name, '/', 2) ~ '^[0-9a-f-]{36}$'
+  and exists (
+    select 1 from public.posts p
+    where p.id = split_part(storage.objects.name, '/', 2)::uuid
+      and p.author_id = auth.uid()
+      and p.status = 'draft'
+  )
+);
+
+create policy avatar_insert on storage.objects for insert to authenticated
+with check (
+  bucket_id = 'avatars'
+  and split_part(name, '/', 1) = auth.uid()::text
+);
+
+create policy avatar_select on storage.objects for select to authenticated
+using (
+  bucket_id = 'avatars' and
+  (split_part(name, '/', 1) = auth.uid()::text
+   or (split_part(name, '/', 1) ~ '^[0-9a-f-]{36}$'
+       and public.can_view_profile(split_part(name, '/', 1)::uuid)))
+);
+
+create policy avatar_remove on storage.objects for delete to authenticated
+using (
+  bucket_id = 'avatars'
+  and split_part(name, '/', 1) = auth.uid()::text
+);
+
+-- Note: No UPDATE policies are defined on storage.objects for authenticated or anon.
+-- Overwriting existing images is prohibited; published images cannot be overwritten.
+
+-- Access controls on functions
 revoke all on function public.rotate_invite() from public;
 revoke all on function public.preview_invite(text) from public;
 revoke all on function public.send_friend_request(text) from public;
 revoke all on function public.handle_friend_request(uuid,text) from public;
 revoke all on function public.remove_friend(uuid) from public;
 revoke all on function public.publish_post(uuid) from public;
+revoke all on function public.are_friends(uuid,uuid) from public;
+revoke all on function public.can_view_profile(uuid) from public;
+revoke all on function public.can_view_post(uuid) from public;
+revoke all on function public.can_interact_post(uuid) from public;
+
 grant execute on function public.rotate_invite() to authenticated;
 grant execute on function public.preview_invite(text) to authenticated;
 grant execute on function public.send_friend_request(text) to authenticated;
 grant execute on function public.handle_friend_request(uuid,text) to authenticated;
 grant execute on function public.remove_friend(uuid) to authenticated;
 grant execute on function public.publish_post(uuid) to authenticated;
+grant execute on function public.are_friends(uuid,uuid) to authenticated;
+grant execute on function public.can_view_profile(uuid) to authenticated;
+grant execute on function public.can_view_post(uuid) to authenticated;
+grant execute on function public.can_interact_post(uuid) to authenticated;

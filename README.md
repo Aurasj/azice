@@ -6,13 +6,17 @@ AziCe? is a dark, English-language, friends-only social app with "I Drank" and "
 
 ## 1. Run it now — no API keys needed
 
-Open this folder in Antigravity, then in its terminal:
+Open this folder in Antigravity, then in its terminal run:
+
+```bash
+node server.mjs
+```
+
+Or, if Python is preferred:
 
 ```bash
 python -m http.server 5173
 ```
-
-On Windows, use `py -m http.server 5173` if `python` is unavailable.
 Visit **http://localhost:5173**. Because `config.js` has no Supabase credentials, it automatically runs a **clearly labeled local demo**, with sample posts and friends, local storage, profile, 48-hour feed, reactions, comments, a 4-step posting flow, phone camera capture, a calendar, and English UI.
 
 The demo is **not networked**: invite links are examples and do not create real friend connections. It is for reviewing interaction, not actual friend testing. Camera capture requires a real camera and secure context (`localhost` or HTTPS).
@@ -68,7 +72,8 @@ The Supabase SDK is loaded from jsDelivr in online mode. An offline/mobile-first
 node --check app.js
 node --check cloud.js
 node --check demo.js
-node --test tests/demo.test.mjs
+node --check server.mjs
+node --test tests/demo.test.mjs tests/server.test.mjs tests/security.test.mjs
 ```
 
 The provided unit checks validate demo posting, feed, emoji behavior, comments, and friend removal. They do not replace live service tests.

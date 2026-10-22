@@ -36,7 +36,23 @@ export function createDemo() {
     mode:'demo', getUser:async()=>db.user,
     signIn:async()=>db.user, signUp:async()=>db.user, google:async()=>db.user, signOut:async()=>{},
     getMyProfile:async()=>clone().profiles.find(x=>x.id===current),
-    saveProfile:async fields=>{Object.assign(db.profiles[0],fields); persist(); return db.profiles[0];},
+    saveProfile:async fields=>{
+      if('is_18_plus_confirmed' in fields) {
+        if(fields.is_18_plus_confirmed !== true) {
+          throw Error('Age confirmation required: you must be at least 18 years old.');
+        }
+      }
+      const prof = db.profiles.find(x=>x.id===current);
+      if(!prof?.is_18_plus_confirmed && fields.is_18_plus_confirmed !== true) {
+        throw Error('Age confirmation required: you must be at least 18 years old.');
+      }
+      if(fields.username && !/^[a-z0-9_]{3,24}$/.test(fields.username)) throw Error('Invalid username.');
+      if(fields.display_name !== undefined && (!fields.display_name.trim() || fields.display_name.length > 60)) throw Error('Invalid display name.');
+      if(fields.bio !== undefined && fields.bio.length > 150) throw Error('Bio exceeds 150 characters.');
+      Object.assign(db.profiles[0],fields);
+      persist();
+      return db.profiles[0];
+    },
     getProfile:async id=>clone().profiles.find(x=>x.id===id),
     getProfiles:async ids=>clone().profiles.filter(p=>ids.includes(p.id)),
     getInvite:async()=>db.token,
@@ -65,6 +81,16 @@ export function createDemo() {
     react:async(postId,emoji)=>{if(!isOpen(postId)||emoji&&!['😂','❤️','😮','🔥','👏'].includes(emoji))throw Error('Reactions are closed or invalid.');db.reactions=db.reactions.filter(r=>!(r.post_id===postId&&r.user_id===current));if(emoji)db.reactions.push({post_id:postId,user_id:current,emoji});persist();},
     saveAvatar:async file=>{db.profiles[0].avatar_path=await imgData(file);persist();return db.profiles[0].avatar_path;},
     resetDemo:async()=>{db=starter();persist();},
+    deleteAccount:async()=>{
+      db.posts=[];
+      db.reactions=[];
+      db.comments=[];
+      db.friends=[];
+      db.requests=[];
+      db.profiles[0].avatar_path=null;
+      db.profiles[0].is_18_plus_confirmed=false;
+      persist();
+    }
   };
   function isOpen(id) {const p=db.posts.find(x=>x.id===id);return p&&(p.author_id===current||db.friends.includes(p.author_id))&&Date.now()-new Date(p.published_at).getTime()<48*3600000;}
   function withExtras(p) {
