@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 450" role="img" aria-label="Demo illustration of a drink">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#423124"/><stop offset="1" stop-color="#191c22"/></linearGradient><linearGradient id="glass" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#f0bb65"/><stop offset="1" stop-color="#a85e22"/></linearGradient></defs>
+<rect width="700" height="450" fill="url(#bg)"/><circle cx="575" cy="85" r="110" fill="#bf844d" opacity=".09"/><circle cx="120" cy="250" r="150" fill="#fff" opacity=".025"/>
+<ellipse cx="355" cy="396" rx="180" ry="17" fill="#121419" opacity=".5"/>
+<path d="M245 148h200l-18 210c-2 19-15 27-32 27H297c-17 0-29-9-31-28Z" fill="url(#glass)" stroke="#ffce85" stroke-width="6"/>
+<path d="M444 187h23c69-3 68 124-15 124h-17" fill="none" stroke="#d7a268" stroke-width="18"/>
+<path d="M240 145c-15-29 11-46 32-40 4-38 54-53 75-19 19-26 69-21 73 15 31-14 59 9 37 44Z" fill="#f3e8c9"/>
+<text x="350" y="423" fill="#f4c88c" font-family="sans-serif" font-size="18" font-weight="600" text-anchor="middle">DEMO IMAGE</text>
+</svg>
