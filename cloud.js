@@ -202,7 +202,8 @@ export function createCloud(client) {
       const u=await me();const path=`${u.id}/${crypto.randomUUID()}.jpg`;
       const {error}=await client.storage.from('avatars').upload(path,file,{contentType:'image/jpeg',upsert:false});
       if(error)throw error;
-      await run(client.from('profiles').update({avatar_path:path}).eq('id',u.id));
+      try{await run(client.from('profiles').update({avatar_path:path}).eq('id',u.id));}
+      catch(error){try{await client.storage.from('avatars').remove([path]);}catch{}throw error;}
       return `avatar:${path}`;
     }
   };

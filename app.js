@@ -33,10 +33,75 @@ const state = {
   cache:new Map(), demo:false
 };
 let api;
+const draftPhotoURLs=new Map(), imageLoads=new Map();
+let photoViewer=null, photoViewerSequence=0, photoCacheVersion=0;
+const revokePhotoURL=url=>{if(typeof url==='string'&&url.startsWith('blob:'))URL.revokeObjectURL(url);};
+function draftPhotoURL(file){if(!draftPhotoURLs.has(file))draftPhotoURLs.set(file,URL.createObjectURL(file));return draftPhotoURLs.get(file);}
+function cleanDraftPhotoURLs(){for(const [file,url] of draftPhotoURLs)if(!state.draft.files.includes(file)){revokePhotoURL(url);draftPhotoURLs.delete(file);}}
+function clearPhotoCache(){photoCacheVersion++;for(const url of state.cache.values())revokePhotoURL(url);state.cache.clear();imageLoads.clear();}
+// Share authenticated downloads between thumbnails and the viewer; retain only a bounded session cache.
+async function privatePhotoURL(path){
+ if(path.startsWith('blob:')||path.startsWith('data:'))return path;
+ if(state.cache.has(path))return state.cache.get(path);
+ if(imageLoads.has(path))return imageLoads.get(path);
+ const account=accountVersion, cacheVersion=photoCacheVersion;
+ const loading=api.imageUrl(path).then(url=>{
+  if(account!==accountVersion||cacheVersion!==photoCacheVersion){revokePhotoURL(url);throw Error('Photo unavailable.');}
+  state.cache.set(path,url);
+  if(state.cache.size>32){const oldest=[...state.cache.keys()].find(key=>key!==photoViewer?.path);if(oldest){revokePhotoURL(state.cache.get(oldest));state.cache.delete(oldest);}}
+  return url;
+ }).finally(()=>{if(imageLoads.get(path)===loading)imageLoads.delete(path);});
+ imageLoads.set(path,loading);return loading;
+}
+function closePhotoViewer(goBack=true){
+ const viewer=photoViewer;if(!viewer)return;
+ photoViewer=null;viewer.dialog.close();viewer.dialog.remove();document.body.style.overflow=viewer.overflow;
+ if(viewer.focus?.isConnected)viewer.focus.focus();
+ if(goBack&&history.state?.azicePhoto===viewer.id)history.back();
+}
+async function openPhotoViewer(path){
+ closePhotoViewer(false);
+ const dialog=document.createElement('dialog'),id=++photoViewerSequence;
+ dialog.className='full-photo-viewer';dialog.setAttribute('aria-label','Full photo');
+ dialog.innerHTML='<button type="button" class="viewer-close" aria-label="Close full photo">×</button><p role="status">Loading photo...</p><img alt="Full uncropped photo" hidden>';
+ const viewer={dialog,id,path,focus:document.activeElement,overflow:document.body.style.overflow};photoViewer=viewer;
+ dialog.querySelector('button').addEventListener('click',()=>closePhotoViewer());
+ dialog.addEventListener('cancel',event=>{event.preventDefault();closePhotoViewer();});
+ document.body.append(dialog);document.body.style.overflow='hidden';dialog.showModal();dialog.querySelector('button').focus();
+ history.pushState({...history.state,azicePhoto:id},'');
+ try{const url=await privatePhotoURL(path);if(photoViewer!==viewer)return;const img=dialog.querySelector('img');img.onload=()=>{if(photoViewer===viewer)dialog.querySelector('p').hidden=true;};img.onerror=()=>{if(photoViewer===viewer)dialog.querySelector('p').textContent='Photo unavailable.';};img.src=url;img.hidden=false;}
+ catch{if(photoViewer===viewer)dialog.querySelector('p').textContent='Photo unavailable.';}
+}
 let commentCard=null, commentCardVersion=0;
 let accountVersion=0, friendRefreshVersion=0, returnRefresh=null, authSubscription=null;
+let seenIncoming=null, installTimer=null, installNudgeDialog=null, installDismissedUntil=0;
+const INSTALL_REMINDER=30*DAY;
+function installed(){return Boolean(navigator.standalone||window.matchMedia?.('(display-mode: standalone)').matches);}
+function installEligible(){
+ let until=installDismissedUntil;try{until=Math.max(until,Number(localStorage.getItem('azice_install_remind_after'))||0);}catch{}
+ const mobile=/Android|iPhone|iPad/i.test(navigator.userAgent||'');
+ const ios=/iPhone|iPad/i.test(navigator.userAgent||'')&&/Safari/i.test(navigator.userAgent||'');
+ return Boolean(mobile&&(ios||state.installPrompt)&&!installed()&&Date.now()>=until&&state.user&&state.profile&&['feed','profile','friends'].includes(state.view));
+}
+function dismissInstall(){installDismissedUntil=Date.now()+INSTALL_REMINDER;try{localStorage.setItem('azice_install_remind_after',String(installDismissedUntil));}catch{}}
+function scheduleInstall(){
+ if(installTimer||!installEligible())return;
+ installTimer=setTimeout(async()=>{
+  installTimer=null;
+  if(!installEligible()||document.visibilityState==='hidden'||photoViewer||state.cameraStream||document.querySelector('dialog[open],.modal-backdrop'))return;
+  const account=accountVersion;
+  const choice=confirmInApp('Add it to your Home Screen for a faster, app-like experience.',{title:'Get AziCe? on your phone',action:'Install App',cancel:'Not Now'});
+  installNudgeDialog=document.querySelector('dialog.azice-confirm');
+  dismissInstall();
+  const accepted=await choice;installNudgeDialog=null;
+  if(accepted&&account===accountVersion&&!installed())try{await handleAction({dataset:{action:'install'}});}catch(error){showToast(error.message||'Could not open installation.');}
+ },8000);
+}
 function setCurrentUser(user){
  if(state.user?.id!==user?.id){
+  seenIncoming=null;clearTimeout(installTimer);installTimer=null;installNudgeDialog?.close();installNudgeDialog=null;
+  clearTimeout(showToast.timer);const toast=$('#toast');if(toast)toast.hidden=true;
+  closePhotoViewer();stopCamera();state.draft.files=[];cleanDraftPhotoURLs();clearPhotoCache();
   closeCommentCard();
   accountVersion++;friendRefreshVersion++;
   state.friends={friends:[],incoming:[],outgoing:[]};state.friendsLoaded=false;state.inviteToken=null;
@@ -57,8 +122,13 @@ async function refreshFriends(){
  const account=accountVersion, refresh=++friendRefreshVersion;
  const friends=await api.friendData();
  if(account!==accountVersion||refresh!==friendRefreshVersion)return false;
+ const fresh=seenIncoming!==null&&friends.incoming.some(request=>!seenIncoming.has(request.id));
+ if(seenIncoming===null)seenIncoming=new Set();
+ for(const request of friends.incoming)seenIncoming.add(request.id);
  state.friends=friends;state.friendsLoaded=true;updateFriendsButton();
+ if(fresh&&document.visibilityState!=='hidden')showToast('You have a new friend request!',true);
  const invite=$('#feed-invite');if(invite)invite.innerHTML=feedInviteCard();
+ scheduleInstall();
  return true;
 }
 function refreshOnReturn(){
@@ -78,9 +148,9 @@ const dayISO = value => {const d=new Date(value); return `${d.getFullYear()}-${S
 const isActive = post => Date.now()-new Date(post.published_at).getTime()<48*HOUR;
 const who = post => post.author_id===state.user?.id ? 'You' : (post.author?.display_name || 'Friend');
 const own = p => p.author_id===state.user?.id;
-function showToast(message) { const el=$('#toast'); el.textContent=message; el.hidden=false; clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>el.hidden=true,3800); }
+function showToast(message,friendRequest=false) { const el=$('#toast'); el.textContent=message;if(friendRequest)el.innerHTML=`<button type="button" class="toast-action" data-action="friend-toast" data-account="${accountVersion}">${html(message)}</button>`;el.hidden=false; clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>el.hidden=true,friendRequest?8000:3800); }
 // App-styled confirmation; no browser-native confirm() popup.
-function confirmInApp(message, { title = 'Are you sure?', action = 'Confirm', danger = false } = {}) {
+function confirmInApp(message, { title = 'Are you sure?', action = 'Confirm', danger = false, cancel = 'Cancel' } = {}) {
  return new Promise(resolve => {
   const dialog = document.createElement('dialog');
   dialog.className = 'azice-confirm';
@@ -89,7 +159,7 @@ function confirmInApp(message, { title = 'Are you sure?', action = 'Confirm', da
    <h2 id="azice-confirm-title">${html(title)}</h2>
    <p>${html(message)}</p>
    <div class="azice-confirm-actions">
-    <button type="button" class="secondary" data-choice="cancel">Cancel</button>
+    <button type="button" class="secondary" data-choice="cancel">${html(cancel)}</button>
     <button type="button" class="${danger ? 'azice-danger-button' : 'primary'}" data-choice="accept">${html(action)}</button>
    </div>
   </div>`;
@@ -122,6 +192,7 @@ function renderCommentCard(card){
   p.relationship==='friends'?'<button type="button" class="secondary" disabled>Friends</button>':'';
  card.dialog.innerHTML=`<div class="azice-confirm-content"><div class="comment-user-heading">${avatar(p,'small')}<div><h2 id="comment-user-title">${html(p.display_name)}</h2><p>@${html(p.username)}</p></div></div><div class="azice-confirm-actions" aria-live="polite">${actions}<button type="button" class="secondary" data-card-action="close">Close</button></div></div>`;
  loadImages();
+ scheduleInstall();
 }
 async function openCommentAuthor(commentId){
  closeCommentCard();
@@ -257,7 +328,7 @@ function shell(content, tab='feed'){
 }
 function initials(name){return html((name||'?').trim().slice(0,1).toUpperCase());}
 function backBar(title, action='profile'){return `<div class="subheader"><button class="icon-btn" data-action="${action}" aria-label="Back">‹</button><h1>${html(title)}</h1></div>`;}
-function photoCard(photo,idx){const path=html(photo.path);return `<div class="photo-slide"><div class="photo-loading">📷</div><img data-private-photo="${path}" alt="Photo ${idx+1}" loading="lazy"></div>`;}
+function photoCard(photo,idx){const path=html(photo.path);return `<button type="button" class="photo-slide" data-action="view-photo" data-path="${path}" aria-label="Open full photo ${idx+1}"><span class="photo-loading" aria-hidden="true">📷</span><img data-private-photo="${path}" alt="Photo ${idx+1}" loading="lazy"></button>`;}
 function avatar(p,cls=''){const path=p?.avatar_path;const src=path?(path.startsWith('data:')?path:(path.startsWith('avatar:')?path:`avatar:${path}`)):null;return `<div class="avatar ${cls}">${src?`<img data-private-photo="${html(src)}" alt="${html(p?.display_name||'User')} avatar">`:initials(p?.display_name)}</div>`;}
 function postCard(p){
  const counts=Object.fromEntries(EMOJI.map(e=>[e,(p.reactions||[]).filter(r=>r.emoji===e).length]));
@@ -335,15 +406,16 @@ function editProfileView(){const p=state.profile;return shell(`${backBar('Edit P
 function newPostView(){const d=state.draft;
  let content='';
  if(d.step===0)content=`<h1>What's the story today?</h1><p class="muted">Choose one. No pressure either way.</p><div class="choice-grid"><button class="choice ${d.kind==='drank'?'chosen':''}" data-action="choose-kind" data-value="drank"><span>🍺</span>I Drank</button><button class="choice ${d.kind==='sober'?'chosen':''}" data-action="choose-kind" data-value="sober"><span>🧃</span>I Didn't Drink</button></div>`;
- if(d.step===1)content=`<h1>Capture the moment</h1><p class="muted">Up to 3 photos, straight from your camera. ${d.kind==='drank'?'At least 1 required.':'Photos are optional.'}</p><div class="capture-list">${d.files.map((f,i)=>`<div class="capture-thumb"><img src="${URL.createObjectURL(f)}" alt="Captured photo"><button data-action="remove-photo" data-id="${i}" aria-label="Remove photo">×</button></div>`).join('')}${d.files.length<3?'<button class="capture-add" data-action="open-camera">＋<small>Take Photo</small></button>':''}</div><div class="camera-note">📷 Photos must be taken in the app. Gallery uploads are disabled for posts.</div>`;
+ if(d.step===1)content=`<h1>Capture the moment</h1><p class="muted">Up to 3 photos, straight from your camera. ${d.kind==='drank'?'At least 1 required.':'Photos are optional.'}</p><div class="capture-list">${d.files.map((f,i)=>`<div class="capture-thumb"><button type="button" class="preview-photo" data-action="view-draft-photo" data-id="${i}" aria-label="Open full captured photo ${i+1}"><img src="${draftPhotoURL(f)}" alt="Captured photo"></button><button data-action="remove-photo" data-id="${i}" aria-label="Remove photo">×</button></div>`).join('')}${d.files.length<3?'<button class="capture-add" data-action="open-camera">＋<small>Take Photo</small></button>':''}</div><div class="camera-note">📷 Photos must be taken in the app. Gallery uploads are disabled for posts.</div>`;
  if(d.step===2)content=`<h1>What's your reason?</h1><p class="muted">A good excuse makes a good story.</p><textarea id="post-reason" maxlength="300" rows="5" placeholder="Tell your story...">${html(d.reason)}</textarea><div class="char-count"><span>Required</span><span id="reason-counter">${d.reason.length}/300</span></div><p class="section-label">Need inspiration?</p><div class="suggestions">${SUGGEST[d.kind].map((s,i)=>`<button data-action="suggest" data-id="${i}">${html(s)}</button>`).join('')}</div>`;
- if(d.step===3)content=`<h1>Review your post</h1><p class="muted">Once published, posts can't be edited.</p><div class="review-card"><span class="kind ${d.kind==='drank'?'drink':'sober'}">${d.kind==='drank'?'🍺 I Drank':'🧃 I Didn\'t Drink'}</span><div class="capture-list">${d.files.map(f=>`<div class="capture-thumb"><img src="${URL.createObjectURL(f)}" alt="Preview"></div>`).join('')}</div><p>${html(d.reason)}</p></div><p class="safety-note">Your post is shared only with confirmed friends. It stays in Feed for 48 hours, then moves to your private archive.</p>`;
+ if(d.step===3)content=`<h1>Review your post</h1><p class="muted">Once published, posts can't be edited.</p><div class="review-card"><span class="kind ${d.kind==='drank'?'drink':'sober'}">${d.kind==='drank'?'🍺 I Drank':'🧃 I Didn\'t Drink'}</span><div class="photo-scroller" aria-label="Preview photos">${d.files.map((f,i)=>photoCard({path:draftPhotoURL(f)},i)).join('')}</div><p>${html(d.reason)}</p></div><p class="safety-note">Your post is shared only with confirmed friends. It stays in Feed for 48 hours, then moves to your private archive.</p>`;
  return shell(`${backBar('New Post','cancel-post')}<div class="step-indicator">STEP ${d.step+1} OF 4</div><div class="new-post">${content}</div><div class="post-actions">${d.step>0?'<button class="secondary" data-action="post-back">Back</button>':''}<button class="primary" data-action="post-next">${d.step===3?'Publish Post':'Continue →'}</button></div>`,'feed');
 }
 function cameraView(){return `<main class="camera-screen"><div class="camera-header"><button data-action="close-camera" aria-label="Close camera">×</button><span>Take Photo</span><button data-action="flip-camera" aria-label="Switch camera">⟳</button></div>${state.cameraError?`<div class="camera-error">${html(state.cameraError)}</div>`:'<video id="camera-preview" autoplay playsinline muted></video>'}<div class="camera-footer"><span>${state.draft.files.length}/3 photos</span><button class="shutter" data-action="capture-photo" aria-label="Capture photo"></button><span>Camera only</span></div></main>`;}
 function inviteView(preview){return `<main class="centered auth-screen">${brand()}<div class="auth-panel"><h1>Friend Invitation</h1>${preview?`<p><b>${html(preview.display_name)}</b> invited you to connect on AziCe?.</p><p class="muted">@${html(preview.username)} · Posts remain private until accepted.</p><button class="primary" data-action="send-request">Send Friend Request</button>`:'<p>This invite link has expired or was revoked.</p>'}<button class="secondary" data-action="dismiss-invite">Go to Feed</button></div></main>`;}
 function installInfo(){return `<div class="modal-backdrop" data-action="close-install"><div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()"><h2>Install AziCe?</h2><p>On iPhone: open in Safari, tap Share, then <b>Add to Home Screen</b> and enable <b>Open as Web App</b> if offered.</p><p>On Android: open the browser menu and select <b>Install app</b> or <b>Add to Home screen</b>.</p><button class="primary" data-action="close-install">Got It</button></div></div>`;}
 function render(){
+ cleanDraftPhotoURLs();
  const root=$('#app');
  switch(state.view){
  case 'auth':root.innerHTML=authView();break;
@@ -362,47 +434,72 @@ function render(){
  if(state.installHelp)root.insertAdjacentHTML('beforeend',installInfo());
  loadImages();
 }
+let photoObserver;
 function loadImages(){
+ const load=img=>{
+  const path=img.dataset.privatePhoto;if(!path)return;
+  privatePhotoURL(path).then(url=>{if(img.isConnected){img.src=url;img.classList.add('loaded');}}).catch(()=>{if(img.isConnected)img.alt='Photo unavailable';});
+ };
+ if(typeof IntersectionObserver!=='undefined'&&!photoObserver)photoObserver=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){photoObserver.unobserve(entry.target);load(entry.target);}},{rootMargin:'300px'});
+ photoObserver?.disconnect();
  for(const img of document.querySelectorAll('[data-private-photo]')){
-  const path=img.dataset.privatePhoto;if(!path)continue;
-  const load=state.cache.has(path)?Promise.resolve(state.cache.get(path)):api.imageUrl(path).then(url=>{state.cache.set(path,url);return url;});
-  load.then(url=>{if(img.isConnected){img.src=url;img.classList.add('loaded');}}).catch(()=>{if(img.isConnected)img.alt='Photo unavailable';});
+  if(img.loading==='lazy'&&photoObserver)photoObserver.observe(img);else load(img);
  }
 }
-let cameraFacing='environment';
+let cameraFacing='environment',cameraVersion=0,capturing=false;
 async function startCamera(){
+ stopCamera();const version=cameraVersion;
+ if(state.draft.files.length>=3)throw Error('You can add up to 3 photos.');
  if(!navigator.mediaDevices?.getUserMedia){state.cameraError='Camera unavailable. Use HTTPS or localhost and a phone with a camera.';state.view='camera';render();return;}
  state.cameraError=null;state.view='camera';render();
  try{
-  state.cameraStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:cameraFacing},width:{ideal:1280},height:{ideal:1280}}});
+  const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:cameraFacing},width:{ideal:1600},height:{ideal:1600}}});
+  if(version!==cameraVersion||state.view!=='camera'){stream.getTracks().forEach(track=>track.stop());return;}
+  state.cameraStream=stream;
   attachCamera();
- }catch(e){state.cameraError=`Could not open camera: ${e.message}`;render();}
+ }catch(e){if(version===cameraVersion){state.cameraError=`Could not open camera: ${e.message}`;render();}}
 }
 function attachCamera(){const video=$('#camera-preview');if(video&&state.cameraStream){video.srcObject=state.cameraStream;video.play().catch(()=>{});}}
-function stopCamera(){if(state.cameraStream){state.cameraStream.getTracks().forEach(t=>t.stop());state.cameraStream=null;}}
+function stopCamera(){cameraVersion++;if(state.cameraStream){state.cameraStream.getTracks().forEach(t=>t.stop());state.cameraStream=null;}}
 async function canvasBlob(source,width,height){
- const canvas=document.createElement('canvas');const max=1280;const factor=Math.min(1,max/Math.max(width,height));canvas.width=Math.round(width*factor);canvas.height=Math.round(height*factor);
- const ctx=canvas.getContext('2d');ctx.drawImage(source,0,0,canvas.width,canvas.height);
- return new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Photo conversion failed')),'image/jpeg',.78));
+ if(!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0)throw Error('Photo dimensions are invalid.');
+ // Draw the entire frame proportionally. A fresh canvas JPEG carries no source EXIF/GPS.
+ const canvas=document.createElement('canvas'),factor=Math.min(1,1600/Math.max(width,height));canvas.width=Math.max(1,Math.round(width*factor));canvas.height=Math.max(1,Math.round(height*factor));
+ const ctx=canvas.getContext('2d');if(!ctx)throw Error('Photo processing is unavailable.');ctx.drawImage(source,0,0,canvas.width,canvas.height);
+ return new Promise((resolve,reject)=>canvas.toBlob(b=>b?.type==='image/jpeg'?resolve(b):reject(Error('Could not process photo. Please try again.')),'image/jpeg',.80));
 }
 async function capture(){
+ if(capturing)return;
+ if(state.draft.files.length>=3)throw Error('You can add up to 3 photos.');
  const video=$('#camera-preview');if(!video||!video.videoWidth)throw Error('Camera is not ready.');
- const file=await canvasBlob(video,video.videoWidth,video.videoHeight);
- state.draft.files.push(file);stopCamera();state.view='new';render();
+ const version=cameraVersion,draft=state.draft;capturing=true;
+ try{const file=await canvasBlob(video,video.videoWidth,video.videoHeight);
+ if(version!==cameraVersion||state.view!=='camera'||draft!==state.draft)return;
+ state.draft.files.push(file);stopCamera();state.view='new';render();}finally{capturing=false;}
 }
 async function galleryAvatar(file){
  if(!file?.type?.startsWith('image/'))throw Error('Choose an image.');
- const image=await createImageBitmap(file);let blob;
+ const image=await decodeAvatar(file);let blob;
  try{
   const n=Math.min(image.width,image.height),x=(image.width-n)/2,y=(image.height-n)/2;
-  const c=document.createElement('canvas');c.width=512;c.height=512;c.getContext('2d').drawImage(image,x,y,n,n,0,0,512,512);
-  blob=await new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(Error('Avatar conversion failed')),'image/jpeg',.85));
- }finally{image.close();}
+  const c=document.createElement('canvas'),size=Math.min(512,n);c.width=size;c.height=size;const ctx=c.getContext('2d');if(!ctx)throw Error('Avatar processing is unavailable.');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.drawImage(image,x,y,n,n,0,0,size,size);
+  blob=await new Promise((ok,no)=>c.toBlob(b=>b?.type==='image/jpeg'?ok(b):no(Error('Avatar conversion failed')),'image/jpeg',.80));
+ }finally{image.close?.();}
  const path=await api.saveAvatar(blob);state.profile.avatar_path=path;showToast('Profile photo updated.');render();
+}
+async function decodeAvatar(file){
+ try{
+  if(typeof createImageBitmap==='function')return await createImageBitmap(file,{imageOrientation:'from-image'});
+  const url=URL.createObjectURL(file),image=new Image();
+  try{await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});return image;}finally{URL.revokeObjectURL(url);}
+ }catch{throw Error('Could not read this image. Please choose a supported image.');}
 }
 async function refreshPosts(){if(state.view==='feed')state.feed=await hydrate(await api.getFeed());else if(['profile','friendProfile','day'].includes(state.view))state.history=await hydrate(await api.getHistory(state.view==='friendProfile'?state.target.id:state.user.id));render();}
 async function handleAction(button){const a=button.dataset.action,id=button.dataset.id,val=button.dataset.value;
  switch(a){
+ case 'friend-toast':if(Number(button.dataset.account)===accountVersion&&state.user){$('#toast').hidden=true;await openFriends();}break;
+ case 'view-photo':await openPhotoViewer(button.dataset.path);break;
+ case 'view-draft-photo':if(state.draft.files[Number(id)])await openPhotoViewer(draftPhotoURL(state.draft.files[Number(id)]));break;
  case 'feed': stopCamera();await home();break;
  case 'profile':stopCamera();await openProfile();break;
  case 'friends':stopCamera();await openFriends();break;
@@ -478,7 +575,7 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
    finally{button.disabled=false;}
    break;
  }
- case 'install':if(state.installPrompt){await state.installPrompt.prompt();state.installPrompt=null;}else{state.installHelp=true;render();}break;
+ case 'install':if(installed())break;dismissInstall();if(state.installPrompt){const prompt=state.installPrompt;state.installPrompt=null;await prompt.prompt();}else if(/iPhone|iPad/i.test(navigator.userAgent||'')){await confirmInApp('In Safari, tap Share → Add to Home Screen, then tap Add. Enable Open as Web App if offered.',{title:'Install AziCe?',action:'Got It'});}else{state.installHelp=true;render();}break;
  case 'close-install':state.installHelp=false;render();break;
  }
 }
@@ -525,9 +622,13 @@ document.addEventListener('submit',async event=>{
 });
 document.addEventListener('visibilitychange',refreshOnReturn);
 window.addEventListener('focus',refreshOnReturn);
-window.addEventListener('pageshow',refreshOnReturn);
-window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installPrompt=event;});
+window.addEventListener('pageshow',event=>{if(event?.persisted&&state.view==='camera'&&!state.cameraStream)startCamera();return refreshOnReturn();});
+window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installPrompt=event;scheduleInstall();});
+window.addEventListener('appinstalled',()=>{state.installPrompt=null;dismissInstall();installNudgeDialog?.close();});
 if('serviceWorker' in navigator&&['http:','https:'].includes(location.protocol))navigator.serviceWorker.register('/sw.js').catch(()=>{});
+window.addEventListener('popstate',()=>closePhotoViewer(false));
+window.addEventListener('pagehide',event=>{stopCamera();if(!event.persisted){closePhotoViewer(false);clearPhotoCache();for(const url of draftPhotoURLs.values())revokePhotoURL(url);draftPhotoURLs.clear();}});
+
 (async()=>{
  state.view='loading';render();await boot();
 })();

@@ -11,7 +11,7 @@ const empty=()=>({friends:[],incoming:[],outgoing:[]});
 const request=id=>({id,profile:{id:'sender',display_name:'Sender',username:'sender'}});
 function setup(){
  const events={document:{},window:{}};
- const root={innerHTML:''},inviteSlot={innerHTML:''},button={innerHTML:'',setAttribute(k,v){this[k]=v;}};
+ const root={innerHTML:''},toast={hidden:true},inviteSlot={innerHTML:''},button={innerHTML:'',setAttribute(k,v){this[k]=v;}};
  let focused=false,scroll=null,reads=0,authCallback;
  let data=empty(),user={id:'a'};
  const api={mode:'cloud',getUser:async()=>user,getMyProfile:async()=>({id:user.id,display_name:'Test',username:'test'}),getFeed:async()=>[],
@@ -21,13 +21,56 @@ function setup(){
  const context=vm.createContext({URLSearchParams,console,Map,Set,Date,
   location:{search:'',origin:'http://localhost',protocol:'http:'},navigator:{},
   sessionStorage:{getItem:()=>null,setItem(){}},setTimeout:()=>1,clearTimeout(){},
-  document:{visibilityState:'visible',querySelector:s=>s==='#app'?root:s==='#feed-invite'?inviteSlot:s==='.friends-button'?button:s==='#friends-title'?{focus(){focused=true;}}:{},querySelectorAll:()=>[],addEventListener:(e,f)=>{events.document[e]=f;}},
+  document:{visibilityState:'visible',querySelector:s=>s==='#toast'?toast:s==='#app'?root:s==='#feed-invite'?inviteSlot:s==='.friends-button'?button:s==='#friends-title'?{focus(){focused=true;}}:{},querySelectorAll:()=>[],addEventListener:(e,f)=>{events.document[e]=f;}},
   window:{AZICE_CONFIG:{},scrollTo:(...v)=>{scroll=v;},addEventListener:(e,f)=>{events.window[e]=f;}},
  });
- vm.runInContext(source+'\nglobalThis.app={state,setCurrentUser,refreshFriends,refreshOnReturn,openFriends,feedView,profileView,friendsView,handleAction,boot,render,setApi:value=>{api=value;}};',context);
+ vm.runInContext(source+'\nglobalThis.app={state,setCurrentUser,refreshFriends,refreshOnReturn,openFriends,feedView,profileView,friendsView,handleAction,boot,render,installEligible,dismissInstall,scheduleInstall,setApi:value=>{api=value;}};',context);
  const app=context.app;app.setApi(api);app.setCurrentUser(user);app.state.profile={display_name:'Test'};app.state.view='feed';
- return {app,api,context,events,root,button,inviteSlot,setData:v=>{data=v;},setUser:v=>{user=v;},get reads(){return reads;},get focused(){return focused;},get scroll(){return scroll;},auth:user=>authCallback(user)};
+ return {app,api,context,events,root,toast,button,inviteSlot,setData:v=>{data=v;},setUser:v=>{user=v;},get reads(){return reads;},get focused(){return focused;},get scroll(){return scroll;},auth:user=>authCallback(user)};
 }
+
+test('install eligibility respects mobile support, standalone, auth flow and persisted cooldown',()=>{
+ const h=setup(),store=new Map();h.context.localStorage={getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)};
+ h.context.navigator.userAgent='Android Chrome';assert.equal(h.app.installEligible(),false);
+ h.app.state.installPrompt={};assert.equal(h.app.installEligible(),true);
+ h.context.window.matchMedia=()=>({matches:true});assert.equal(h.app.installEligible(),false);
+ h.context.window.matchMedia=()=>({matches:false});h.context.navigator.userAgent='iPhone Safari';h.app.state.installPrompt=null;
+ assert.equal(h.app.installEligible(),true);
+ for(const view of ['auth','onboard','camera','new']){h.app.state.view=view;assert.equal(h.app.installEligible(),false);}
+ h.app.state.view='feed';h.app.dismissInstall();assert.equal(h.app.installEligible(),false);
+ assert.ok(Number(store.get('azice_install_remind_after'))>Date.now()+29*86400000);
+ const next=setup();next.context.navigator.userAgent='iPhone Safari';next.context.localStorage=h.context.localStorage;
+ assert.equal(next.app.installEligible(),false);store.clear();assert.equal(next.app.installEligible(),true);
+});
+
+test('install timer defers to open dialogs and Android uses the captured prompt only on action',async()=>{
+ const h=setup();h.context.navigator.userAgent='Android Chrome';let prompts=0,fire;
+ h.context.setTimeout=fn=>{fire=fn;return 1;};
+ h.events.window.beforeinstallprompt({preventDefault(){},prompt:async()=>{prompts++;}});
+ assert.equal(prompts,0);await fire(); // Harness reports an open dialog: do not overlay it.
+ assert.equal(prompts,0);
+ await h.app.handleAction({dataset:{action:'install'}});assert.equal(prompts,1);assert.equal(h.app.state.installPrompt,null);
+});
+
+test('friend notifications skip initial requests, deduplicate IDs, and open existing Friends',async()=>{
+ const h=setup();h.setData({...empty(),incoming:[request('existing')]});await h.app.refreshFriends();assert.equal(h.toast.hidden,true);
+ h.setData({...empty(),incoming:[request('existing'),request('new')]});await h.app.refreshFriends();
+ assert.equal(h.toast.hidden,false);assert.match(h.toast.innerHTML,/You have a new friend request!/);
+ const account=h.toast.innerHTML.match(/data-account="(\d+)"/)[1];h.toast.hidden=true;
+ await h.app.refreshFriends();assert.equal(h.toast.hidden,true);
+ h.setData(empty());await h.app.refreshFriends();h.setData({...empty(),incoming:[request('new')]});await h.app.refreshFriends();assert.equal(h.toast.hidden,true);
+ await h.app.handleAction({dataset:{action:'friend-toast',account}});assert.equal(h.app.state.view,'friends');
+});
+
+test('account switching clears notification baseline and rejects stale toast actions and refreshes',async()=>{
+ const h=setup();await h.app.refreshFriends();h.setData({...empty(),incoming:[request('a-request')]});await h.app.refreshFriends();
+ const account=h.toast.innerHTML.match(/data-account="(\d+)"/)[1];let resolve;h.api.friendData=()=>new Promise(r=>{resolve=r;});
+ const pending=h.app.refreshFriends();h.app.setCurrentUser({id:'b'});assert.equal(h.toast.hidden,true);
+ resolve({...empty(),incoming:[request('late-a')]});await pending;assert.equal(h.toast.hidden,true);
+ await h.app.handleAction({dataset:{action:'friend-toast',account}});assert.equal(h.app.state.view,'feed');
+ h.api.friendData=async()=>({...empty(),incoming:[request('b-existing')]});await h.app.refreshFriends();assert.equal(h.toast.hidden,true);
+ h.app.setCurrentUser(null);assert.equal(h.toast.hidden,true);
+});
 
 test('Feed header has a labeled native Friends button, users SVG, and unchanged two-tab navigation',()=>{
  const {app}=setup();const markup=app.feedView();
