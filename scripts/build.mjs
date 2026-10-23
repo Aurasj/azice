@@ -44,7 +44,9 @@ for (const file of files) {
   copyFileSync(join(root, file), dest);
 }
 for (const dir of directories) {
-  cpSync(join(root, dir), join(dist, dir), { recursive: true });
+  // Keep the approved source and editing master locally; publish optimized icon exports.
+  const authoringAssets = new Set([join(root, 'assets', 'logo.png'), join(root, 'assets', 'azice-mascot-master-v2.png')]);
+  cpSync(join(root, dir), join(dist, dir), { recursive: true, filter: source => !authoringAssets.has(source) });
 }
 
 console.log('AziCe? build complete: dist/ (public frontend files only)');

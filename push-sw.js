@@ -19,7 +19,7 @@ self.addEventListener('message',event=>{
 self.addEventListener('push',event=>event.waitUntil((async()=>{
  let data;try{data=event.data?.json();}catch{return;}
  if(!data||!Object.hasOwn(pushTexts,data.category)||!/^[a-f0-9-]{36}$/.test(data.id)||data.binding!==await pushBinding())return;
- await self.registration.showNotification('AziCe?',{body:pushTexts[data.category],icon:'/assets/icon-192.png',tag:'azice:'+data.id,renotify:false,
+ await self.registration.showNotification('AziCe?',{body:pushTexts[data.category],icon:'/assets/azice-pwa-192-v2.png',tag:'azice:'+data.id,renotify:false,
   data:{id:data.id,binding:data.binding}});
 })()));
 self.addEventListener('notificationclick',event=>{

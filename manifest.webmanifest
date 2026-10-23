@@ -10,7 +10,8 @@
   "background_color": "#15171c",
   "theme_color": "#15171c",
   "icons": [
-    {"src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-    {"src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+    {"src": "/assets/azice-pwa-192-v2.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/assets/azice-pwa-512-v2.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/assets/azice-maskable-512-v2.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
   ]
 }
