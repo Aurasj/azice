@@ -29,6 +29,47 @@ function setup(){
  return {app,api,context,events,root,toast,button,inviteSlot,setData:v=>{data=v;},setUser:v=>{user=v;},get reads(){return reads;},get focused(){return focused;},get scroll(){return scroll;},auth:user=>authCallback(user)};
 }
 
+function usernameForm(h,value='@other_user'){
+ const input={value,disabled:false},button={disabled:false};
+ const form={id:'add-username-form',querySelector:s=>s==='input'?input:button};
+ const find=h.context.document.querySelector;h.context.document.querySelector=s=>s==='#add-username-form'?form:find(s);
+ return {input,button,submit:()=>h.events.document.submit({target:form,preventDefault(){}})};
+}
+
+test('Friends has one compact labelled username form and keeps incoming requests first and invite actions intact',()=>{
+ const h=setup();h.app.state.friends={...empty(),incoming:[request('one')]};const markup=h.app.friendsView();
+ assert.equal((markup.match(/id="add-username-form"/g)||[]).length,1);
+ assert.match(markup,/<label for="friend-username">Enter username<\/label>/);assert.match(markup,/type="submit" class="primary"[^>]*>Add<\/button>/);
+ assert.match(markup,/autocapitalize="none"/);assert.ok(markup.indexOf('Requests Received')<markup.indexOf('add-username-form'));
+ assert.match(markup,/Share Link/);assert.match(markup,/New Link/);assert.match(markup,/data-action="feed"/);
+});
+
+test('username submission sends an exact name without @ and presents all status messages without a preview',async()=>{
+ const messages={sent:'Friend request sent!',not_found:'User not found.',pending:'Request already sent.',friends:"You're already friends.",self:'You cannot add yourself.',rate_limited:'Too many attempts. Try again later.',unavailable:'Could not send friend request. Please try again.'};
+ for(const [status,message] of Object.entries(messages)){
+  const h=setup(),form=usernameForm(h,'  @other_user  ');let sent;
+  h.api.sendUsernameRequest=async name=>{sent=name;return status;};await form.submit();
+  assert.equal(sent,'other_user');assert.equal(h.toast.textContent,message);assert.equal(form.button.disabled,false);
+  assert.equal(h.reads,['sent','pending','friends'].includes(status)?1:0);assert.equal(h.app.state.view,'feed');
+ }
+ const h=setup(),form=usernameForm(h,'@@bad');let calls=0;h.api.sendUsernameRequest=async()=>{calls++;};await form.submit();
+ assert.equal(calls,0);assert.equal(h.toast.textContent,'Use 3–24 lowercase letters, numbers or underscores.');
+});
+
+test('username form prevents duplicate submits, suppresses private errors and ignores responses after account switching',async()=>{
+ const h=setup(),form=usernameForm(h);let resolve,calls=0;
+ h.api.sendUsernameRequest=()=>{calls++;return new Promise(r=>{resolve=r;});};
+ const pending=form.submit();assert.equal(form.button.disabled,true);await form.submit();assert.equal(calls,1);
+ h.app.setCurrentUser({id:'b'});resolve('sent');await pending;assert.notEqual(h.toast.textContent,'Friend request sent!');assert.equal(h.reads,0);
+ h.app.state.profile={display_name:'Other'};const next=usernameForm(h);h.api.sendUsernameRequest=async()=>{throw Error('Private database detail');};await next.submit();
+ assert.equal(next.button.disabled,false);assert.equal(h.toast.textContent,'Could not send friend request. Please try again.');
+});
+
+test('cloud username requests call only the exact-name RPC and pass no recipient ID',async()=>{
+ const calls=[],api=createCloud({rpc:async(name,args)=>{calls.push({name,args});return {data:'sent',error:null};},from:()=>{throw Error('No profile lookup allowed');}});
+ assert.equal(await api.sendUsernameRequest('@exact_user'),'sent');assert.deepEqual(calls,[{name:'send_username_friend_request',args:{p_username:'@exact_user'}}]);
+});
+
 test('install eligibility respects mobile support, standalone, auth flow and persisted cooldown',()=>{
  const h=setup(),store=new Map();h.context.localStorage={getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)};
  h.context.navigator.userAgent='Android Chrome';assert.equal(h.app.installEligible(),false);

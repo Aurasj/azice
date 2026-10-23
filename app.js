@@ -34,6 +34,7 @@ const state = {
   cache:new Map(), demo:false
 };
 let api;
+let usernameRequestBusy=false;
 const PUSH_CATEGORIES={friend_requests:'Friend requests',new_posts:'New posts',comments:'Comments',reactions:'Reactions',posting_reminders:'Posting reminders (optional)'};
 const pushDefaults=()=>({enabled:false,friend_requests:true,new_posts:true,comments:true,reactions:true,posting_reminders:false});
 let pushSettings=pushDefaults(),pushSettingsLoaded=false,pushBusy=false,pushSync=Promise.resolve(),pendingNotification=new URLSearchParams(location.search).get('notification');
@@ -242,7 +243,7 @@ function setCurrentUser(user){
   activityRefreshVersion++;activityOpenVersion++;state.activity={items:[],unread:false,loading:false,error:null};state.postReturn='feed';
   state.friends={friends:[],incoming:[],outgoing:[]};state.friendsLoaded=false;state.inviteToken=null;
   state.profile=null;state.feed=[];state.history=[];state.cache.clear();
-  state.openedPost=null;pushSettings=pushDefaults();pushBusy=false;
+  state.openedPost=null;pushSettings=pushDefaults();pushBusy=false;usernameRequestBusy=false;
  }
  state.user=user;
  pushSync=syncPushAccount(user).catch(()=>{});
@@ -581,12 +582,32 @@ function profileView(){
 function friendProfileView(){const p=state.target;return shell(`${backBar('Profile','friends')}${profileHeader(p)}<div class="section-heading"><h2>Last 30 Days</h2></div>${state.history.length?state.history.map(postCard).join(''):'<div class="empty-small">No recent posts to show.</div>'}`,'profile');}
 function dayView(){const posts=state.history.filter(p=>dayISO(p.published_at)===state.selectedDate);const title=new Date(`${state.selectedDate}T12:00:00`).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});return shell(`${backBar(title)}<div class="section-heading"><h2>Your Memories</h2><span>${posts.length} posts</span></div>${posts.length?posts.map(postCard).join(''):'<div class="empty-small">Nothing posted on this day.</div>'}`,'profile');}
 function friendRow(p,actions=''){return `<div class="friend-row">${avatar(p,'small')}<div><strong>${html(p.display_name)}</strong><span>@${html(p.username)}</span></div><div class="friend-action">${actions}</div></div>`;}
+async function addFriendByUsername(form){
+ if(usernameRequestBusy||!state.user||!state.profile)return;
+ const input=form.querySelector('input'),button=form.querySelector('button'),version=accountVersion;
+ const username=input.value.trim().replace(/^@/,'');
+ try{validateUsername(username);}catch{showToast(USERNAME_FORMAT_MESSAGE);return;}
+ usernameRequestBusy=true;input.disabled=true;button.disabled=true;
+ try{
+  const result=await api.sendUsernameRequest(username);
+  if(version!==accountVersion)return;
+  const messages={sent:'Friend request sent!',not_found:'User not found.',pending:'Request already sent.',friends:"You're already friends.",self:'You cannot add yourself.',invalid:USERNAME_FORMAT_MESSAGE,rate_limited:'Too many attempts. Try again later.'};
+  if(result==='sent')input.value='';
+  showToast(messages[result]||'Could not send friend request. Please try again.');
+  if(['sent','pending','friends'].includes(result)){
+   await refreshFriends().catch(()=>{});
+   if(version===accountVersion&&state.view==='friends')render();
+  }
+ }catch{if(version===accountVersion)showToast(api.mode==='demo'?'Demo mode cannot send real invitations. Connect Supabase first.':'Could not send friend request. Please try again.');}
+ finally{if(version===accountVersion){usernameRequestBusy=false;input.disabled=false;button.disabled=false;const current=$('#add-username-form');if(current){current.querySelector('input').disabled=false;current.querySelector('button').disabled=false;}}}
+}
 function friendsView(){
  const f=state.friends;const link=`${location.origin}/?invite=${encodeURIComponent(state.inviteToken||'')}`;
  const received=`<section class="friends-section"><div class="section-heading"><h2>Requests Received</h2><span>${f.incoming.length}</span></div>
  ${f.incoming.length?f.incoming.map(r=>friendRow(r.profile,`<button class="small-primary" data-action="request" data-id="${html(r.id)}" data-value="accept">Accept</button><button class="small-secondary" data-action="request" data-id="${html(r.id)}" data-value="decline">Decline</button>`)).join(''):'<p class="muted small-text">No pending requests.</p>'}</section>`;
  const invite=`<section class="invite-card"><div class="invite-head">↗ &nbsp;Invite your crew</div><p>Share your link. Every friendship request needs your approval.</p><div class="invite-url">${html(link)}</div><div class="button-pair"><button class="primary" data-action="share-invite">Share Link</button><button class="secondary" data-action="rotate-invite">New Link</button></div></section>`;
- return shell(`<div class="friends-screen">${backBar('Friends & Invites','feed').replace('<h1>','<h1 id="friends-title" tabindex="-1">')}${f.incoming.length?received+invite:invite+received}
+ const usernameForm=`<form id="add-username-form" class="username-friend-form"><label for="friend-username">Enter username</label><div class="username-friend-controls"><input id="friend-username" name="friend_username" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="25" required placeholder="@username" ${usernameRequestBusy?'disabled':''}><button type="submit" class="primary" ${usernameRequestBusy?'disabled':''}>Add</button></div></form>`;
+ return shell(`<div class="friends-screen">${backBar('Friends & Invites','feed').replace('<h1>','<h1 id="friends-title" tabindex="-1">')}${f.incoming.length?received:''}${usernameForm}${invite}${f.incoming.length?'':received}
  <section class="friends-section"><div class="section-heading"><h2>Requests Sent</h2><span>${f.outgoing.length}</span></div>
  ${f.outgoing.length?f.outgoing.map(r=>friendRow(r.profile,`<button class="small-secondary" data-action="request" data-id="${html(r.id)}" data-value="cancel">Cancel</button>`)).join(''):'<p class="muted small-text">No sent requests.</p>'}</section>
  <section class="friends-section"><div class="section-heading"><h2>Friends</h2><span>${f.friends.length}</span></div>
@@ -797,7 +818,7 @@ document.addEventListener('invalid',event=>{if(isProfileUsername(event.target))e
 document.addEventListener('input',event=>{if(isProfileUsername(event.target))event.target.setCustomValidity('');if(event.target.id==='post-reason'){state.draft.reason=event.target.value.slice(0,300);const c=$('#reason-counter');if(c)c.textContent=`${state.draft.reason.length}/300`;}});
 document.addEventListener('change',async event=>{if(event.target.dataset?.pushCategory){const key=event.target.dataset.pushCategory;if(!PUSH_CATEGORIES[key])return;const version=accountVersion;try{const settings=await api.saveNotificationPreferences({[key]:event.target.checked});if(version===accountVersion){pushSettings=settings;showToast('Notification preferences updated.');}}catch{if(version===accountVersion){event.target.checked=!event.target.checked;showToast('Could not update notifications.');}}}else if(event.target.id==='avatar-input'&&event.target.files?.[0])try{await galleryAvatar(event.target.files[0]);}catch(e){showToast(e.message);}});
 document.addEventListener('submit',async event=>{
- const form=event.target;event.preventDefault();const values=Object.fromEntries(new FormData(form));
+ const form=event.target;event.preventDefault();if(form.id==='add-username-form'){await addFriendByUsername(form);return;}const values=Object.fromEntries(new FormData(form));
  try{
   if(form.id==='auth-form'){
    const res=state.authSignUp?await api.signUp(values.email,values.password):await api.signIn(values.email,values.password);

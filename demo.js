@@ -59,6 +59,7 @@ export function createDemo() {
     rotateInvite:async()=>{db.token='demo-'+uuid().slice(0,10);persist();return db.token;},
     previewInvite:async token=>token===db.token?db.profiles[0]:null,
     sendRequest:async()=>{throw Error('Demo mode cannot send real invitations. Connect Supabase first.');},
+    sendUsernameRequest:async()=>{throw Error('Demo mode cannot send real invitations. Connect Supabase first.');},
     commentAuthor:async commentId=>commentAuthor(commentId),
     sendCommentRequest:async commentId=>{
       const card=commentAuthor(commentId);

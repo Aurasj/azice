@@ -83,6 +83,12 @@ function checkLayout(){
   const last=document.querySelector('.notification-disable')||document.querySelector('.notification-quiet');last.scrollIntoView({block:'start'});
   check('Last notification control/text can scroll clear of navigation',box(last).bottom<=box(nav).top+1,{bottom:box(last).bottom,navTop:box(nav).top});
  }
+ const usernameForm=document.querySelector('#add-username-form');if(usernameForm){
+  const input=usernameForm.querySelector('input'),button=usernameForm.querySelector('button');
+  check('Username form stays inside safe horizontal edges',xSafe(usernameForm)&&xSafe(input)&&xSafe(button));
+  check('Username input and Add button remain tappable',box(input).height>=44&&box(button).height>=44&&box(input).width>=100&&box(button).width>=44);
+  check('Username input has its visible accessible label',input.labels.length===1&&input.labels[0].textContent==='Enter username');
+ }
  const centered=document.querySelector('.centered');if(centered)check('Standalone page content clears safe edges',number(centered,'paddingTop')>=top+1&&box(centered).left+number(centered,'paddingLeft')>=left-1);
  window.scrollTo(0,scroll);report.textContent=JSON.stringify({simulated:true,preset,view,viewport:[innerWidth,innerHeight],insets,passed:results.filter(r=>r.pass).length,failed:results.filter(r=>!r.pass),results},null,2);
 }

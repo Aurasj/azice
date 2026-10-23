@@ -125,6 +125,7 @@ export function createCloud(client) {
     rotateInvite:async()=>run(client.rpc('rotate_invite')),
     previewInvite:async token=>{const rows=await run(client.rpc('preview_invite',{p_token:token}));return rows?.[0]||null;},
     sendRequest:async token=>run(client.rpc('send_friend_request',{p_token:token})),
+    sendUsernameRequest:async username=>run(client.rpc('send_username_friend_request',{p_username:username})),
     commentAuthor:async commentId=>{
       const rows=await commentRpc('comment_author_card',commentId);
       if(!rows?.[0])throw Error('User unavailable.');
