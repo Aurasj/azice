@@ -19,6 +19,18 @@ const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.
 state.feed=[{id:'post',author_id:'test',published_at:new Date().toISOString(),kind:'drank',reason:'Safe-area layout verification',post_photos:[{path:image}],comments:[{id:'comment',author_id:'friend',author_name:'Test Friend',body:'A test comment.',created_at:new Date().toISOString()}],reactions:[]}];
 state.activeComments.add('post');state.draft={kind:'sober',reason:'Safe-area layout verification',files:[],step:2};
 const view=params.get('view')||'feed';state.view=['viewer','dialog','comment-card','install'].includes(view)?'feed':view;
+const activityItems=[{event_key:'comment:layout',actor:{display_name:'Test Friend'},category:'comment',post_id:'post',created_at:new Date().toISOString(),read_at:null},{event_key:'reaction:layout',actor:{display_name:'Test Friend'},category:'reaction',post_id:'post',created_at:new Date(Date.now()-300000).toISOString(),read_at:null}];
+api.getActivity=async()=>({items:activityItems,unread:activityItems.some(item=>!item.read_at)});
+api.markActivityRead=async key=>{activityItems.find(item=>item.event_key===key).read_at=new Date().toISOString();return true;};
+api.getPost=async id=>{const post=state.feed.find(post=>post.id===id);return post?{...post,author:me}:null;};
+state.activity={items:activityItems,unread:true,loading:false,error:null};
+if(view==='activity-empty'||view==='activity-error'){state.view='activity';state.activity.items=[];state.activity.unread=false;if(view==='activity-error')state.activity.error='Could not load activity. Please try again.';}
+if(['notifications','profile'].includes(view)){
+ config.pushPublicKey='layout-only-not-a-vapid-key';let preferences=pushDefaults();
+ api.getNotificationPreferences=async()=>preferences;
+ api.saveNotificationPreferences=async changes=>(preferences={...preferences,...changes});
+ window.notificationLayout={view:()=>state.view,reminders:()=>pushSettings.posting_reminders,installed:()=>installed(),showDisable:()=>{pushSettings={...pushDefaults(),enabled:true};render();}};
+}
 if(view==='camera')state.cameraError='Camera permission is disabled in this layout fixture.';
 if(view==='install')state.installHelp=true;
 render();
@@ -35,6 +47,7 @@ function checkLayout(){
  const scroll=scrollY;window.scrollTo(0,0);
  check('No horizontal document overflow',document.documentElement.scrollWidth<=innerWidth,{viewport:innerWidth,document:document.documentElement.scrollWidth});
  if(header){check('Shared header reserves top inset once',Math.abs(box(header).height-(68+top))<2,box(header).height);
+  check('Header actions do not overlap brand',box(header.querySelector('.brand')).right<=box(header.querySelector('.header-actions')).left+1);
   for(const control of header.querySelectorAll('button,.friend-request-dot'))check('Header control clears cutout',box(control).top>=top-1&&xSafe(control),control.getAttribute('aria-label')||'request dot');}
  if(content){check('Content clears expanded navigation',number(content,'paddingBottom')-box(nav).height>=30,{padding:number(content,'paddingBottom'),nav:box(nav).height});
   const back=content.querySelector('.subheader');if(back)check('Page title/Back follows shared header',box(back).top>=box(header).bottom-1);
@@ -51,6 +64,18 @@ function checkLayout(){
   const b=box(surface);check('Dialog content stays in safe vertical viewport',b.top>=top-1&&b.bottom<=innerHeight-bottom+1,{top:b.top,bottom:b.bottom});check('Dialog content stays in safe horizontal viewport',xSafe(surface));
   if(!fullPhoto)check('Short dialogs can scroll',style(dialog).overflowY==='auto');}
  const close=document.querySelector('.viewer-close');if(close)check('Full-photo close clears cutout',box(close).top>=top+11&&xSafe(close));
+ const entry=document.querySelector('.notifications-entry');if(entry){check('Profile notification entry is comfortably tappable',box(entry).height>=44&&xSafe(entry));check('Profile notification entry follows calendar and precedes history',box(entry).top>=box(document.querySelector('.calendar')).bottom&&box(entry).bottom<=box(entry.nextElementSibling).top);}
+ const activityRows=[...document.querySelectorAll('.activity-row')];if(activityRows.length){
+  for(const row of activityRows)check('Activity row is safe and tappable',box(row).height>=44&&xSafe(row));
+  activityRows.at(-1).scrollIntoView({block:'start'});check('Last Activity row clears navigation',box(activityRows.at(-1)).bottom<=box(nav).top+1);
+ }
+ const notificationRows=[...document.querySelectorAll('.notification-switch-row')];if(notificationRows.length){
+  check('Exactly five notification switch rows',notificationRows.length===5);
+  for(const row of notificationRows)check('Notification row has a safe, full-width tap target',box(row).height>=44&&xSafe(row)&&box(row.querySelector('.notification-switch')).right<=box(row).right);
+  check('Posting reminders default off',!document.querySelector('[data-push-category="posting_reminders"]').checked);
+  const last=document.querySelector('.notification-disable')||document.querySelector('.notification-quiet');last.scrollIntoView({block:'start'});
+  check('Last notification control/text can scroll clear of navigation',box(last).bottom<=box(nav).top+1,{bottom:box(last).bottom,navTop:box(nav).top});
+ }
  const centered=document.querySelector('.centered');if(centered)check('Standalone page content clears safe edges',number(centered,'paddingTop')>=top+1&&box(centered).left+number(centered,'paddingLeft')>=left-1);
  window.scrollTo(0,scroll);report.textContent=JSON.stringify({simulated:true,preset,view,viewport:[innerWidth,innerHeight],insets,passed:results.filter(r=>r.pass).length,failed:results.filter(r=>!r.pass),results},null,2);
 }

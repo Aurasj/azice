@@ -27,6 +27,7 @@ const SUGGEST = {
 const state = {
   view:'loading', user:null, profile:null, friends:{friends:[],incoming:[],outgoing:[]}, friendsLoaded:false,
   feed:[], history:[], month:new Date(), selectedDate:'', target:null, inviteToken:null,
+  activity:{items:[],unread:false,loading:false,error:null},postReturn:'feed',
   activeComments:new Set(), activeReactions:null, authSignUp:false,
   draft:{kind:'drank',reason:'',files:[],step:0},
   cameraStream:null, cameraError:null, installPrompt:null, installHelp:false,
@@ -88,11 +89,8 @@ async function loadPushSettings(){
  }catch{if(version===accountVersion)pushSettings=pushDefaults();}
 }
 function pushInvitationEligible(){
- if(!config.pushPublicKey||!api?.pushSubscription||!api?.saveNotificationPreferences||!pushSettingsLoaded||pushSettings.enabled||pushBusy||!state.user||!state.profile||state.view!=='feed')return false;
- const ua=navigator.userAgent||'',ios=/iPhone|iPad/i.test(ua),version=ua.match(/OS (\d+)[_.](\d+)/);
- // Safari exposes Push APIs only after installation; offer installation guidance on supported iOS.
- const iosInstall=ios&&!installed()&&/Safari/i.test(ua)&&version&&(Number(version[1])>16||Number(version[1])===16&&Number(version[2])>=4);
- if(!navigator.serviceWorker||!(('Notification' in window&&'PushManager' in window)||iosInstall)||typeof Notification!=='undefined'&&Notification.permission==='denied'||localPush()?.owner===state.user.id)return false;
+ if(!installed()||savedInvite()||!config.pushPublicKey||!api?.pushSubscription||!api?.saveNotificationPreferences||!pushSettingsLoaded||pushSettings.enabled||pushBusy||!state.user||!state.profile||state.view!=='feed')return false;
+ if(!navigator.serviceWorker||!('Notification' in window&&'PushManager' in window)||typeof Notification!=='undefined'&&Notification.permission==='denied'||localPush()?.owner===state.user.id)return false;
  let until=pushInviteDismissed.get(state.user.id)||0;try{until=Math.max(until,Number(localStorage.getItem('azice_push_invite_after:'+state.user.id))||0);}catch{}
  return Date.now()>=until&&document.visibilityState!=='hidden'&&!photoViewer&&!state.cameraStream&&!installNudgeDialog&&!pushInviteDialog&&!document.querySelector('dialog[open],.modal-backdrop');
 }
@@ -101,8 +99,7 @@ function schedulePushInvitation(){
  const account=accountVersion,owner=state.user.id;
  pushInviteTimer=setTimeout(async()=>{
   pushInviteTimer=null;if(account!==accountVersion||!pushInvitationEligible())return;
-  const ios=/iPhone|iPad/i.test(navigator.userAgent||'')&&!installed();
-  const choice=confirmInApp("Get notified when friends post, comment, react, or send you friend requests."+(ios?' On iPhone, use Safari’s Share → Add to Home Screen, then open the installed app to enable notifications.':''),{
+  const choice=confirmInApp("Get notified when friends post, comment, react, or send you friend requests.",{
    title:'Stay in the loop!',action:'Enable Notifications',cancel:'Maybe Later',
    onAccept:()=>{
     if(account!==accountVersion)return;
@@ -119,10 +116,16 @@ function schedulePushInvitation(){
 }
 function notificationsSection(){
  const configured=Boolean(config.pushPublicKey&&api?.saveNotificationPreferences);
- const ios=/iPhone|iPad/i.test(navigator.userAgent||'');
- const note=!configured?'Notifications are not configured yet.':ios&&!installed()?'On iPhone, use Share → Add to Home Screen, then open the installed app to enable notifications.':'Quiet hours: 10 PM–9 AM. Friend requests can arrive anytime. Reminders are off by default.';
- return `<section class="notifications-section" aria-labelledby="notifications-title"><h2 id="notifications-title">Notifications</h2><p class="muted small-text">${note}</p><div class="button-pair">${pushSettings.enabled?'<button type="button" class="secondary" data-action="push-disable">Disable Notifications</button>':''}${!pushSettings.enabled||localPush()?.owner!==state.user?.id?`<button type="button" class="primary" data-action="push-enable" ${!configured||pushBusy?'disabled':''}>${pushSettings.enabled?'Enable on this device':'Enable Notifications'}</button>`:''}</div><fieldset ${!configured||pushBusy?'disabled':''}><legend class="small-text">Notification categories</legend>${Object.entries(PUSH_CATEGORIES).map(([key,label])=>`<label class="checkline"><input type="checkbox" data-push-category="${key}" ${pushSettings[key]?'checked':''}>${label}</label>`).join('')}</fieldset></section>`;
+ const needsInstall=/iPhone|iPad/i.test(navigator.userAgent||'')&&!installed();
+ const supported='Notification' in window&&'PushManager' in window&&Boolean(navigator.serviceWorker);
+ const blocked=typeof Notification!=='undefined'&&Notification.permission==='denied';
+ const active=configured&&pushSettings.enabled&&localPush()?.owner===state.user?.id&&supported&&Notification.permission==='granted';
+ const status=!configured?'Notifications are not configured yet.':needsInstall?'Add AziCe? to your Home Screen first.':!supported?'Web Push is unavailable in this browser.':blocked?'Notifications are blocked in browser settings.':active?'Enabled on this device':'Not enabled on this device';
+ return `<section class="notification-device" aria-labelledby="notification-device-title"><h2 id="notification-device-title">On this device</h2><p class="notification-status ${active?'is-active':''}" role="status">${status}</p>${needsInstall?'<p class="muted small-text">In Safari, tap Share → Add to Home Screen, then open the installed app to enable notifications.</p>':''}${!active?`<button type="button" class="primary" data-action="push-enable" ${!configured||pushBusy||!supported||needsInstall||blocked?'disabled':''}>Enable on this device</button>`:''}</section>
+ <fieldset class="notification-categories" ${!configured||pushBusy?'disabled':''}><legend>Notification categories</legend>${Object.entries(PUSH_CATEGORIES).map(([key,label])=>`<label class="notification-switch-row"><span class="notification-switch-label">${key==='posting_reminders'?'Posting reminders<small>Optional · off by default</small>':label}</span><span class="notification-switch"><input type="checkbox" role="switch" data-push-category="${key}" ${pushSettings[key]?'checked':''}><span class="notification-switch-track" aria-hidden="true"></span></span></label>`).join('')}</fieldset>
+ <p class="notification-quiet muted small-text">Quiet hours: 10 PM–9 AM. Friend requests can arrive anytime.</p>${pushSettings.enabled?`<button type="button" class="secondary notification-disable" data-action="push-disable" ${pushBusy?'disabled':''}>Disable Notifications</button>`:''}`;
 }
+function notificationsView(){return shell(`<div class="notifications-screen">${backBar('Notifications','profile').replace('<h1>','<h1 id="notifications-title" tabindex="-1">')}${notificationsSection()}</div>`,'profile');}
 async function enablePush(){
  if(pushBusy)return;
  if(!config.pushPublicKey||!api.pushSubscription)throw Error('Notifications are not configured yet.');
@@ -148,7 +151,7 @@ async function enablePush(){
   localStorage.setItem('azice_push_device',JSON.stringify({owner,binding,endpoint:sub.endpoint,renewAfter:Date.now()+30*DAY}));await writePushBinding(binding,version);
   if(version!==accountVersion){await sub.unsubscribe();return;}pushSettings=settings;showToast('Notifications enabled.');
  }catch(error){await sub?.unsubscribe().catch(()=>{});if(version===accountVersion)await writePushBinding(null,version).catch(()=>{});throw error;}
- finally{if(version===accountVersion){pushBusy=false;if(state.view==='profile')render();}}
+ finally{if(version===accountVersion){pushBusy=false;if(['profile','notifications'].includes(state.view))render();}}
 }
 async function openNotification(){
  const id=sessionStorage.getItem('azice_notification');if(!id||!api.resolveNotification)return;
@@ -158,7 +161,7 @@ async function openNotification(){
   if(target?.screen==='friends'){await openFriends();return;}
   if(target?.screen==='post'){
    const post=await api.getPost(target.post_id);if(version!==accountVersion)return;
-   if(post){state.openedPost=(await hydrate([post]))[0];if(version!==accountVersion)return;state.view='post';render();return;}
+   if(post){state.openedPost=(await hydrate([post]))[0];if(version!==accountVersion)return;state.postReturn='feed';state.view='post';render();return;}
   }else if(target?.screen==='feed')return;
   showToast('This update is no longer available.');
  }catch{if(version===accountVersion)showToast('This update is no longer available.');}
@@ -203,7 +206,7 @@ async function openPhotoViewer(path){
  catch{if(photoViewer===viewer)dialog.querySelector('p').textContent='Photo unavailable.';}
 }
 let commentCard=null, commentCardVersion=0;
-let accountVersion=0, friendRefreshVersion=0, returnRefresh=null, authSubscription=null;
+let accountVersion=0, friendRefreshVersion=0, activityRefreshVersion=0,activityOpenVersion=0,returnRefresh=null, authSubscription=null;
 let seenIncoming=null, installTimer=null, installNudgeDialog=null, installDismissedUntil=0;
 const INSTALL_REMINDER=30*DAY;
 function installed(){return Boolean(navigator.standalone||window.matchMedia?.('(display-mode: standalone)').matches);}
@@ -211,7 +214,7 @@ function installEligible(){
  let until=installDismissedUntil;try{until=Math.max(until,Number(localStorage.getItem('azice_install_remind_after'))||0);}catch{}
  const mobile=/Android|iPhone|iPad/i.test(navigator.userAgent||'');
  const ios=/iPhone|iPad/i.test(navigator.userAgent||'')&&/Safari/i.test(navigator.userAgent||'');
- return Boolean(mobile&&(ios||state.installPrompt)&&!installed()&&Date.now()>=until&&state.user&&state.profile&&['feed','profile','friends'].includes(state.view));
+ return Boolean(mobile&&(ios||state.installPrompt)&&!installed()&&!savedInvite()&&Date.now()>=until&&state.user&&state.profile&&['feed','profile','friends'].includes(state.view));
 }
 function dismissInstall(){installDismissedUntil=Date.now()+INSTALL_REMINDER;try{localStorage.setItem('azice_install_remind_after',String(installDismissedUntil));}catch{}}
 function scheduleInstall(){
@@ -236,6 +239,7 @@ function setCurrentUser(user){
   closePhotoViewer();stopCamera();state.draft.files=[];cleanDraftPhotoURLs();clearPhotoCache();
   closeCommentCard();
   accountVersion++;friendRefreshVersion++;
+  activityRefreshVersion++;activityOpenVersion++;state.activity={items:[],unread:false,loading:false,error:null};state.postReturn='feed';
   state.friends={friends:[],incoming:[],outgoing:[]};state.friendsLoaded=false;state.inviteToken=null;
   state.profile=null;state.feed=[];state.history=[];state.cache.clear();
   state.openedPost=null;pushSettings=pushDefaults();pushBusy=false;
@@ -245,6 +249,41 @@ function setCurrentUser(user){
 }
 function friendsButtonContent(){
  return `<svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="7" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 20v-2a6 6 0 0 0-3-5"/></svg><span>Friends</span>${state.friends.incoming.length?'<span class="friend-request-dot" aria-hidden="true"></span>':''}`;
+}
+function activityBellIcon(){return '<svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>';}
+function activityButtonContent(){return activityBellIcon()+(state.activity.unread?'<span class="activity-dot" aria-hidden="true"></span>':'');}
+function updateActivityButton(){const button=$('.activity-button');if(!button?.setAttribute)return;button.innerHTML=activityButtonContent();button.setAttribute('aria-label',state.activity.unread?'Activity, unread comments or reactions':'Activity');}
+async function refreshActivity(){
+ if(!state.user)return;
+ const account=accountVersion,refresh=++activityRefreshVersion;state.activity.loading=true;state.activity.error=null;
+ try{
+  const data=api.getActivity?await api.getActivity():{items:[],unread:false};
+  if(account!==accountVersion||refresh!==activityRefreshVersion)return;
+  state.activity.items=data.items||[];state.activity.unread=Boolean(data.unread);
+ }catch{if(account!==accountVersion||refresh!==activityRefreshVersion)return;state.activity.error='Could not load activity. Please try again.';}
+ if(account!==accountVersion||refresh!==activityRefreshVersion)return;
+ state.activity.loading=false;updateActivityButton();if(state.view==='activity')render();
+}
+async function openActivity(){
+ if(!state.user)return;activityOpenVersion++;state.view='activity';state.activity.loading=true;state.activity.error=null;render();window.scrollTo(0,0);$('#activity-title')?.focus({preventScroll:true});
+ await refreshActivity();if(state.view==='activity')$('#activity-title')?.focus({preventScroll:true});
+}
+async function openActivityPost(eventKey){
+ const item=state.activity.items.find(item=>item.event_key===eventKey);if(!item||state.view!=='activity')return;
+ const account=accountVersion,opening=++activityOpenVersion;
+ const current=()=>account===accountVersion&&opening===activityOpenVersion;
+ try{
+  const post=await api.getPost(item.post_id);if(!current()||state.view!=='activity')return;
+  if(!post||post.author_id!==state.user.id)throw Error('Unavailable');
+  const hydrated=(await hydrate([post]))[0];if(!current()||state.view!=='activity')return;
+  state.openedPost=hydrated;state.postReturn='activity';if(item.category==='comment')state.activeComments.add(post.id);
+  state.view='post';render();window.scrollTo(0,0);
+ }catch{if(current()&&state.view==='activity'){showToast('This activity is no longer available.');await refreshActivity();}return;}
+ try{
+  const marked=await api.markActivityRead(eventKey);if(account!==accountVersion)return;
+  if(marked)for(const row of state.activity.items)if(row.event_key===eventKey)row.read_at=new Date().toISOString();
+  await refreshActivity();
+ }catch{if(account===accountVersion)showToast('Post opened, but activity could not be marked read.');}
 }
 function updateFriendsButton(){
  const button=$('.friends-button');if(!button)return;
@@ -277,7 +316,8 @@ function refreshOnReturn(){
   if(account!==accountVersion)return;
   if(user&&!pushBusy&&(!pushSettingsLoaded||pushSettings.enabled&&pushSettings.timezone!==Intl.DateTimeFormat().resolvedOptions().timeZone))await loadPushSettings();
   if(account!==accountVersion)return;
-  if(await refreshFriends()&&state.view==='friends')render();
+  if(user)await refreshActivity();if(account!==accountVersion)return;
+  if(await refreshFriends()&&['friends','notifications'].includes(state.view))render();
  })().catch(e=>console.warn('Could not refresh friend requests.',e)).finally(()=>{returnRefresh=null;});
  return returnRefresh;
 }
@@ -436,8 +476,13 @@ async function hydrate(posts){
  if(ids.length){const profiles=await api.getProfiles(ids);const map=new Map(profiles.map(p=>[p.id,p]));for(const p of posts) if(!p.author)p.author=map.get(p.author_id) || {display_name:'Friend'};}
  return posts;
 }
-async function home(){const account=accountVersion;const feed=await hydrate(await api.getFeed());if(account!==accountVersion)return;if(!pushSettingsLoaded)await loadPushSettings();if(account!==accountVersion)return;state.feed=feed;state.view='feed';render();await openNotification();}
+async function home(){activityOpenVersion++;const account=accountVersion;const feed=await hydrate(await api.getFeed());if(account!==accountVersion)return;if(!pushSettingsLoaded)await loadPushSettings();if(account!==accountVersion)return;state.feed=feed;state.postReturn='feed';state.view='feed';render();await refreshActivity();if(account===accountVersion)await openNotification();}
 async function openProfile(){state.profile=await api.getMyProfile();state.history=await hydrate(await api.getHistory(state.user.id));await loadPushSettings();state.view='profile';render();}
+async function openNotifications(){
+ if(!state.user||!state.profile)return;
+ const account=accountVersion;await loadPushSettings();if(account!==accountVersion)return;
+ state.view='notifications';render();window.scrollTo(0,0);$('#notifications-title')?.focus({preventScroll:true});
+}
 async function openFriendProfile(id){const p=await api.getProfile(id);if(!p)throw Error('Profile unavailable');state.target=p;state.history=await hydrate(await api.getHistory(id));state.view='friendProfile';render();}
 async function openFriends(){
  if(!state.user)return;
@@ -456,7 +501,7 @@ function headerAvatar(){
 }
 function shell(content, tab='feed'){
  return `<div class="app-shell">
-  <header class="header">${brand()}<div class="header-actions">${state.view==='feed'?`<button type="button" class="friends-button" data-action="friends" aria-label="${state.friends.incoming.length?'Friends & Invites, pending incoming friend requests':'Friends & Invites'}">${friendsButtonContent()}</button>`:''}${headerAvatar()}</div></header>
+  <header class="header">${brand()}<div class="header-actions ${state.view==='feed'?'feed-header-actions':''}">${state.view==='feed'?`<button type="button" class="friends-button" data-action="friends" aria-label="${state.friends.incoming.length?'Friends & Invites, pending incoming friend requests':'Friends & Invites'}">${friendsButtonContent()}</button><button type="button" class="activity-button" data-action="activity" aria-label="${state.activity.unread?'Activity, unread comments or reactions':'Activity'}">${activityButtonContent()}</button>`:''}${headerAvatar()}</div></header>
   ${state.demo?'<div class="demo-banner">DEMO MODE · Only on this device · No real friends connected</div>':''}
   <main class="content">${content}</main>
   <nav class="bottom-nav" aria-label="Main navigation">
@@ -503,6 +548,11 @@ function feedInviteCard(){
 function emptyFeed(){return `<div class="empty-state"><div class="empty-art">👀</div><h2>Pretty quiet in here...</h2><p>The crew hasn't shown up yet.</p><button class="text-button" data-action="start-post">Or be the first to post →</button></div>`;}
 function feedView(){return shell(`<div class="page-title"><h1>What's happening?</h1><span>Last 48 hours</span></div>
  ${state.feed.length?state.feed.map(postCard).join(''):emptyFeed()}<div id="feed-invite">${feedInviteCard()}</div>`,'feed');}
+function activityView(){
+ const a=state.activity;
+ const content=a.loading?'<div class="activity-state" role="status"><p>Loading activity...</p></div>':a.error?`<div class="activity-state"><p role="alert">${html(a.error)}</p><button type="button" class="primary" data-action="activity">Try Again</button></div>`:!a.items.length?`<div class="activity-state">${activityBellIcon()}<h2>Your story is just getting started</h2><p>Comments and reactions to your posts will appear here.</p></div>`:`<div class="activity-list">${a.items.map(item=>{const name=item.actor?.display_name||'Someone',action=item.category==='comment'?'commented on your post.':'reacted to your post.';return `<button type="button" class="activity-row ${item.read_at?'':'is-unread'}" data-action="activity-post" data-id="${html(item.event_key)}" aria-label="${item.read_at?'':'Unread. '}${html(name+' '+action)}"><span class="activity-row-icon" aria-hidden="true">${item.category==='comment'?'◌':'♡'}</span><span class="activity-copy"><span><strong>${html(name)}</strong> ${action}</span><time datetime="${html(item.created_at)}">${fmt(item.created_at)}</time></span>${item.read_at?'':'<span class="activity-unread" aria-hidden="true"></span>'}</button>`;}).join('')}</div>`;
+ return shell(`<div class="activity-screen">${backBar('Activity','feed').replace('<h1>','<h1 id="activity-title" tabindex="-1">')}${content}</div>`);
+}
 function profileHeader(p,me=false){return `<div class="profile-header"><div class="profile-avatar">${avatar(p,'large')}</div><div class="profile-identity"><h1>${html(p.display_name)}</h1><p>@${html(p.username)}</p>${me?'<button class="tiny-link" data-action="edit-profile">Edit Profile</button>':''}</div></div>
  ${p.bio?`<p class="profile-bio">${html(p.bio)}</p>`:''}`;}
 function monthGrid(){
@@ -521,8 +571,9 @@ function monthGrid(){
 }
 function profileView(){
  const p=state.profile;return shell(`${profileHeader(p,true)}
- ${notificationsSection()}
- ${monthGrid()}<div class="section-heading"><h2>Recent Posts</h2><span>${state.history.length} posts</span></div>
+ ${monthGrid()}
+ <button type="button" class="notifications-entry" id="notifications-entry" data-action="notifications"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span><strong>Notifications</strong><small>Manage your alerts</small></span><svg class="notifications-chevron" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 5 7 7-7 7"/></svg></button>
+ <div class="section-heading"><h2>Recent Posts</h2><span>${state.history.length} posts</span></div>
  ${state.history.length?state.history.slice(0,8).map(postCard).join(''):'<div class="empty-small">Your memories will appear here.</div>'}
  <div class="profile-actions"><button class="text-button" data-action="install">Install App</button><button class="text-button" data-action="sign-out">Sign Out</button>${state.demo?'<button class="text-button" data-action="reset-demo">Reset Demo</button>':'<button class="text-button danger-text" data-action="delete-account">Delete Account</button>'}</div>
  <p class="privacy-contact">Safety & Privacy: Contact <b>privacy@azice.aagameri.tech</b> for content removal or takedown assistance.</p>`,'profile');
@@ -562,8 +613,10 @@ function render(){
  case 'auth':root.innerHTML=authView();break;
  case 'onboard':root.innerHTML=onboardView();break;
  case 'feed':root.innerHTML=feedView();break;
- case 'post':root.innerHTML=shell(`${backBar('Post','feed')}${postCard(state.openedPost)}`);break;
+ case 'post':root.innerHTML=shell(`${backBar('Post',state.postReturn)}${postCard(state.openedPost)}`);break;
+ case 'activity':root.innerHTML=activityView();break;
  case 'profile':root.innerHTML=profileView();break;
+ case 'notifications':root.innerHTML=notificationsView();break;
  case 'friends':root.innerHTML=friendsView();break;
  case 'friendProfile':root.innerHTML=friendProfileView();break;
  case 'day':root.innerHTML=dayView();break;
@@ -575,6 +628,7 @@ function render(){
  }
  if(state.installHelp)root.insertAdjacentHTML('beforeend',installInfo());
  loadImages();
+ scheduleInstall();
  schedulePushInvitation();
 }
 let photoObserver;
@@ -637,9 +691,11 @@ async function decodeAvatar(file){
   try{await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});return image;}finally{URL.revokeObjectURL(url);}
  }catch{throw Error('Could not read this image. Please choose a supported image.');}
 }
-async function refreshPosts(){if(state.view==='post'){const version=accountVersion,post=await api.getPost(state.openedPost.id);if(version!==accountVersion)return;if(!post){showToast('This update is no longer available.');await home();return;}state.openedPost=(await hydrate([post]))[0];}else if(state.view==='feed')state.feed=await hydrate(await api.getFeed());else if(['profile','friendProfile','day'].includes(state.view))state.history=await hydrate(await api.getHistory(state.view==='friendProfile'?state.target.id:state.user.id));render();}
+async function refreshPosts(){if(state.view==='post'){const version=accountVersion,post=await api.getPost(state.openedPost.id);if(version!==accountVersion)return;if(!post){showToast('This update is no longer available.');if(state.postReturn==='activity')await openActivity();else await home();return;}state.openedPost=(await hydrate([post]))[0];}else if(state.view==='feed')state.feed=await hydrate(await api.getFeed());else if(['profile','friendProfile','day'].includes(state.view))state.history=await hydrate(await api.getHistory(state.view==='friendProfile'?state.target.id:state.user.id));render();}
 async function handleAction(button){const a=button.dataset.action,id=button.dataset.id,val=button.dataset.value;
  switch(a){
+ case 'activity':await openActivity();break;
+ case 'activity-post':await openActivityPost(id);break;
  case 'push-enable':await enablePush();break;
  case 'push-disable':{const version=accountVersion;await forgetPushDevice();if(version!==accountVersion)break;
   try{const settings=await api.saveNotificationPreferences({enabled:false});if(version!==accountVersion)break;pushSettings=settings;render();showToast('Notifications disabled.');}
@@ -648,7 +704,8 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
  case 'view-photo':await openPhotoViewer(button.dataset.path);break;
  case 'view-draft-photo':if(state.draft.files[Number(id)])await openPhotoViewer(draftPhotoURL(state.draft.files[Number(id)]));break;
  case 'feed': stopCamera();await home();break;
- case 'profile':stopCamera();await openProfile();break;
+ case 'profile':{const fromNotifications=state.view==='notifications';stopCamera();await openProfile();if(fromNotifications)$('#notifications-entry')?.focus({preventScroll:true});break;}
+ case 'notifications':await openNotifications();break;
  case 'friends':stopCamera();await openFriends();break;
  case 'comment-user':await openCommentAuthor(id);break;
  case 'friend-profile':stopCamera();await openFriendProfile(id);break;

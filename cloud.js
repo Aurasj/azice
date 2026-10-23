@@ -112,6 +112,14 @@ export function createCloud(client) {
     pushSubscription:async body=>{let timer;try{const {error}=await Promise.race([client.functions.invoke('push-subscriptions',{body}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Could not update notifications. Please try again.')),8000);})]);if(error)throw Error('Could not update notifications. Please try again.');}finally{clearTimeout(timer);}},
     resolveNotification:async id=>run(client.rpc('resolve_notification',{p_id:id})),
     getPost:async id=>(await decorate(await run(postQuery().eq('id',id).limit(1))))[0]||null,
+    getActivity:async()=>{
+      const data=await run(client.rpc('get_activity'));
+      const items=data?.items||[],ids=Array.from(new Set(items.map(item=>item.actor_id)));
+      const profiles=ids.length?await run(client.from('profiles').select('id,display_name').in('id',ids)):[];
+      const names=new Map(profiles.map(profile=>[profile.id,profile]));
+      return {...data,items:items.map(item=>({...item,actor:names.get(item.actor_id)||null}))};
+    },
+    markActivityRead:async eventKey=>run(client.rpc('mark_activity_read',{p_event_key:eventKey})),
     getProfiles:profileMap,
     getInvite:async()=>{const u=await me();const row=await run(client.from('invites').select('token').eq('user_id',u.id).maybeSingle());return row?.token || (await run(client.rpc('rotate_invite')));},
     rotateInvite:async()=>run(client.rpc('rotate_invite')),
