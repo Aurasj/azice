@@ -1,0 +1,7 @@
+[functions.push-subscriptions]
+# Explicit getUser(token) authentication; supports publishable-key clients.
+verify_jwt = false
+
+[functions.push-dispatch]
+# Scheduler-only opaque secret, checked inside the function. No browser invocation.
+verify_jwt = false

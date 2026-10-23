@@ -65,3 +65,4 @@ html{scroll-padding-top:calc(84px + var(--safe-top));scroll-padding-bottom:calc(
 @media(max-width:350px){.content{padding-left:max(10px,var(--safe-left));padding-right:max(10px,var(--safe-right));padding-bottom:calc(110px + var(--safe-bottom))}}
 @media(min-width:700px){.centered{padding-top:calc(8vh + var(--safe-top))}}
 .toast-action{border:0;padding:0;background:transparent;color:inherit;font:inherit;text-align:left}
+.notifications-section{margin-top:24px;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}.notifications-section fieldset{border:0;padding:16px 0 0;margin:0}.notifications-section .checkline{margin:10px 0}.notifications-section input{accent-color:var(--accent)}

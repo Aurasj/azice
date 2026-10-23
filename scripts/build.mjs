@@ -15,6 +15,7 @@ const files = [
   'config.js',
   'manifest.webmanifest',
   'sw.js',
+  'push-sw.js',
 ];
 const directories = ['assets'];
 
