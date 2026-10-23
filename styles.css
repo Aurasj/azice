@@ -10,3 +10,14 @@
 .privacy-contact{text-align:center;font-size:.72rem;color:var(--muted);margin:18px auto 6px;max-width:320px;line-height:1.45}
 .privacy-contact b{color:#d5d7de}
 @media(min-width:700px){body{background:#0e1014}.app-shell{border-left:1px solid #373a42;border-right:1px solid #373a42;box-shadow:0 0 80px #0005}.header{max-width:510px}.bottom-nav{border:1px solid #353941;border-radius:18px 18px 0 0}.centered{padding-top:8vh}}@media(max-width:350px){.kind{font-size:.6rem;padding:6px 8px}.content{padding:18px 10px 110px}.post-card{padding:11px}.friend-action{max-width:120px}}
+
+/* Small confirmation dialog: preserves AziCe?'s existing colors and controls. */
+.azice-confirm{width:min(380px,calc(100% - 32px));max-width:380px;padding:0;border:1px solid #555965;border-radius:18px;background:#282c36;color:#faf7f1;box-shadow:0 20px 75px #0009}
+.azice-confirm::backdrop{background:rgba(0,0,0,.75)}
+.azice-confirm-content{padding:22px}
+.azice-confirm h2{margin:0 0 12px;font-size:1.2rem}
+.azice-confirm p{font-size:.88rem;line-height:1.55;color:#d9dade;margin:0 0 25px}
+.azice-confirm-actions{display:flex;gap:10px}
+.azice-confirm-actions button{flex:1;min-width:0;min-height:46px}
+.azice-danger-button{border:0;border-radius:12px;padding:12px 16px;background:#a63e42;color:#fff;font-size:.87rem;font-weight:750}
+.azice-confirm button:focus-visible{outline:2px solid #f2a65a;outline-offset:2px}

@@ -28,6 +28,37 @@ const isActive = post => Date.now()-new Date(post.published_at).getTime()<48*HOU
 const who = post => post.author_id===state.user?.id ? 'You' : (post.author?.display_name || 'Friend');
 const own = p => p.author_id===state.user?.id;
 function showToast(message) { const el=$('#toast'); el.textContent=message; el.hidden=false; clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>el.hidden=true,3800); }
+// App-styled confirmation; no browser-native confirm() popup.
+function confirmInApp(message, { title = 'Are you sure?', action = 'Confirm', danger = false } = {}) {
+ return new Promise(resolve => {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'azice-confirm';
+  dialog.setAttribute('aria-labelledby', 'azice-confirm-title');
+  dialog.innerHTML = `<div class="azice-confirm-content">
+   <h2 id="azice-confirm-title">${html(title)}</h2>
+   <p>${html(message)}</p>
+   <div class="azice-confirm-actions">
+    <button type="button" class="secondary" data-choice="cancel">Cancel</button>
+    <button type="button" class="${danger ? 'azice-danger-button' : 'primary'}" data-choice="accept">${html(action)}</button>
+   </div>
+  </div>`;
+  let accepted = false;
+  const previousFocus = document.activeElement;
+  dialog.addEventListener('click', e => {
+   const choice = e.target.closest('[data-choice]');
+   if (choice) { accepted = choice.dataset.choice === 'accept'; dialog.close(); }
+   else if (e.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+   dialog.remove();
+   if (previousFocus?.isConnected) previousFocus.focus();
+   resolve(accepted);
+  }, { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector('[data-choice="cancel"]').focus();
+ });
+}
 async function loadSupabase(){
  if(!cloudEnabled) return createDemo();
  const src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
@@ -259,7 +290,7 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
   }
   if(d.step===3){
     if(button.disabled)return; // prevent duplicate publish on rapid taps
-    if(!confirm('Publish this post? You cannot edit it later.'))return;
+    if(!await confirmInApp('You cannot edit it later.', {title:'Publish this post?',action:'Publish'}))return;
     button.disabled=true;button.textContent='Publishing...';
     try{
       await api.createPost(d.kind,d.reason.trim(),d.files);
@@ -292,24 +323,24 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
  case 'prev-month':state.month=new Date(state.month.getFullYear(),state.month.getMonth()-1,1);render();break;
  case 'next-month':state.month=new Date(state.month.getFullYear(),state.month.getMonth()+1,1);render();break;
  case 'request':await api.requestAction(id,val);await openFriends();showToast('Request updated.');break;
- case 'unfriend':if(confirm('Remove this friend? They will no longer see your posts.')){await api.unfriend(id);await openFriends();showToast('Friend removed.');}break;
+ case 'unfriend':if(await confirmInApp('They will no longer see your posts.', {title:'Remove this friend?',action:'Remove friend',danger:true})){await api.unfriend(id);await openFriends();showToast('Friend removed.');}break;
  case 'share-invite':{
    const link=`${location.origin}/?invite=${encodeURIComponent(state.inviteToken)}`;
    if(navigator.share)try{await navigator.share({title:'Join me on AziCe?',text:'Here is my friend invitation.',url:link});}catch(e){if(e.name!=='AbortError')throw e;}
    else{await navigator.clipboard.writeText(link);showToast('Invitation link copied!');}
    break;
  }
- case 'rotate-invite':if(confirm('Create a new invitation link? Your previous link will stop working.')){state.inviteToken=await api.rotateInvite();render();showToast('New invitation link created.');}break;
+ case 'rotate-invite':if(await confirmInApp('Your previous link will stop working.', {title:'Create a new invitation link?',action:'Create new link'})){state.inviteToken=await api.rotateInvite();render();showToast('New invitation link created.');}break;
  case 'send-request':await api.sendRequest(savedInvite());sessionStorage.removeItem('azice_pending_invite');history.replaceState({},'',location.pathname);await home();showToast('Friend request sent!');break;
  case 'dismiss-invite':sessionStorage.removeItem('azice_pending_invite');history.replaceState({},'',location.pathname);await home();break;
  case 'toggle-auth':state.authSignUp=!state.authSignUp;render();break;
  case 'google':await api.google();break;
  case 'demo-enter':state.user=await api.getUser();state.profile=await api.getMyProfile();await home();break;
  case 'sign-out':await api.signOut();state.user=null;state.profile=null;state.view='auth';render();break;
- case 'reset-demo':if(confirm('Reset demo posts and comments?')){await api.resetDemo();await openProfile();showToast('Demo reset.');}break;
+ case 'reset-demo':if(await confirmInApp('This clears your local demo posts and comments.', {title:'Reset demo data?',action:'Reset demo',danger:true})){await api.resetDemo();await openProfile();showToast('Demo reset.');}break;
  case 'delete-account':{
-   if(!confirm('Permanently delete your account? All your posts, photos, comments, and friendships will be completely erased. This cannot be undone.'))return;
-   if(!confirm('Are you absolutely sure? This action is permanent.'))return;
+   if(!await confirmInApp('All your posts, photos, comments, and friendships will be permanently erased. This cannot be undone.', {title:'Delete your account?',action:'Continue',danger:true}))return;
+   if(!await confirmInApp('This permanently deletes your AziCe? account and cannot be undone.', {title:'Final confirmation',action:'Delete account',danger:true}))return;
    button.disabled=true;button.textContent='Deleting...';
    try{await api.deleteAccount();state.user=null;state.profile=null;state.view='auth';render();showToast('Your account and data have been deleted.');}
    finally{button.disabled=false;}
@@ -349,7 +380,7 @@ document.addEventListener('submit',async event=>{
    state.profile=await api.saveProfile({display_name:values.display_name.trim(),username:values.username.toLowerCase(),bio:values.bio.trim()});showToast('Profile updated.');await openProfile();
   } else if(form.dataset.form==='comment'){
    if(!values.body?.trim())return;
-   if(!confirm('Post this comment? It cannot be edited later.'))return;
+   if(!await confirmInApp('It cannot be edited later.', {title:'Post this comment?',action:'Post comment'}))return;
    await api.comment(form.dataset.post,values.body.trim());await refreshPosts();showToast('Comment posted.');
   }
  }catch(e){console.error(e);showToast(e.message||'Could not save.');}
