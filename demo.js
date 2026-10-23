@@ -59,10 +59,20 @@ export function createDemo() {
     rotateInvite:async()=>{db.token='demo-'+uuid().slice(0,10);persist();return db.token;},
     previewInvite:async token=>token===db.token?db.profiles[0]:null,
     sendRequest:async()=>{throw Error('Demo mode cannot send real invitations. Connect Supabase first.');},
+    commentAuthor:async commentId=>commentAuthor(commentId),
+    sendCommentRequest:async commentId=>{
+      const card=commentAuthor(commentId);
+      if(card.relationship==='self')throw Error('You cannot add yourself');
+      if(card.relationship==='friends')throw Error('Already friends');
+      if(card.relationship==='outgoing')return card.request_id;
+      if(card.relationship==='incoming')throw Error('A request is already pending');
+      if(db.requests.filter(r=>r.sender_id===current&&Date.now()-new Date(r.created_at).getTime()<3600000).length>=30)throw Error('Too many friend requests. Try again later.');
+      const id=uuid();db.requests.push({id,sender_id:current,receiver_id:card.id,status:'pending',created_at:new Date().toISOString()});persist();return id;
+    },
     friendData:async()=>({
       friends:clone().profiles.filter(p=>db.friends.includes(p.id)),
-      incoming:clone().requests.filter(r=>r.receiver_id===current&&r.status==='pending').map(r=>({...r,profile:db.profiles.find(p=>p.id===r.sender_id)})),
-      outgoing:clone().requests.filter(r=>r.sender_id===current&&r.status==='pending').map(r=>({...r,profile:db.profiles.find(p=>p.id===r.receiver_id)}))
+      incoming:clone().requests.filter(r=>r.receiver_id===current&&r.status==='pending').map(r=>({...r,profile:pendingProfile(r.sender_id)})),
+      outgoing:clone().requests.filter(r=>r.sender_id===current&&r.status==='pending').map(r=>({...r,profile:pendingProfile(r.receiver_id)}))
     }),
     requestAction:async(id,action)=>{const r=db.requests.find(x=>x.id===id); if(!r)return; r.status={accept:'accepted',decline:'declined',cancel:'canceled'}[action];if(action==='accept'&&!db.friends.includes(r.sender_id))db.friends.push(r.sender_id);persist();},
     unfriend:async id=>{db.friends=db.friends.filter(x=>x!==id);persist();},
@@ -92,6 +102,18 @@ export function createDemo() {
       persist();
     }
   };
+  function commentAuthor(commentId){
+    const c=db.comments.find(c=>c.id===commentId),p=c&&db.posts.find(p=>p.id===c.post_id);
+    if(!db.user||!p||p.status!=='published'||!(p.author_id===current||(db.friends.includes(p.author_id)&&Date.now()-new Date(p.published_at).getTime()<=30*86400000)))throw Error('User unavailable.');
+    const target=db.profiles.find(p=>p.id===c.author_id);if(!target)throw Error('User unavailable.');
+    const request=db.requests.find(r=>r.status==='pending'&&((r.sender_id===current&&r.receiver_id===target.id)||(r.receiver_id===current&&r.sender_id===target.id)));
+    const relationship=target.id===current?'self':db.friends.includes(target.id)?'friends':request?(request.sender_id===current?'outgoing':'incoming'):'none';
+    return {id:target.id,display_name:target.display_name,username:target.username,avatar_path:['self','friends'].includes(relationship)?target.avatar_path:null,relationship,request_id:request?.id||null};
+  }
+  function pendingProfile(id){
+    const p=db.profiles.find(p=>p.id===id);if(!p)return undefined;
+    return {id:p.id,display_name:p.display_name,username:p.username,avatar_path:db.friends.includes(id)?p.avatar_path:null};
+  }
   function isOpen(id) {const p=db.posts.find(x=>x.id===id);return p&&(p.author_id===current||db.friends.includes(p.author_id))&&Date.now()-new Date(p.published_at).getTime()<48*3600000;}
   function withExtras(p) {
     return {...p,post_photos:p.photos||[],comments:clone().comments.filter(c=>c.post_id===p.id).sort((a,b)=>a.created_at.localeCompare(b.created_at)),reactions:clone().reactions.filter(r=>r.post_id===p.id)};

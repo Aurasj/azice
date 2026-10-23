@@ -36,3 +36,5 @@
 .friends-screen .friend-action button{min-height:36px;white-space:nowrap}
 @media(max-width:380px){.friends-screen .friend-row{grid-template-columns:38px minmax(0,1fr)}.friends-screen .friend-action{grid-column:2;justify-self:start}}
 .feed-invite-card{padding:16px;border:1px solid #343842;border-radius:16px;background:var(--surface)}.feed-invite-card h2{margin:0 0 8px}.feed-invite-card p{margin:0 0 12px;color:var(--muted);font-size:.8rem}
+.comment-author{border:0;background:transparent;padding:0;color:var(--accent);font:inherit;font-weight:700;text-align:left}
+.comment-user-heading{display:flex;align-items:center;gap:12px;margin-bottom:20px}.comment-user-heading>div:last-child{min-width:0;overflow-wrap:anywhere}.comment-user-card h2{margin:0 0 4px}.comment-user-card .comment-user-heading p{margin:0;font-size:.8rem;color:var(--muted)}.comment-user-card .azice-confirm-actions{flex-wrap:wrap}

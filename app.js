@@ -33,9 +33,11 @@ const state = {
   cache:new Map(), demo:false
 };
 let api;
+let commentCard=null, commentCardVersion=0;
 let accountVersion=0, friendRefreshVersion=0, returnRefresh=null, authSubscription=null;
 function setCurrentUser(user){
  if(state.user?.id!==user?.id){
+  closeCommentCard();
   accountVersion++;friendRefreshVersion++;
   state.friends={friends:[],incoming:[],outgoing:[]};state.friendsLoaded=false;state.inviteToken=null;
   state.profile=null;state.feed=[];state.history=[];state.cache.clear();
@@ -107,6 +109,61 @@ function confirmInApp(message, { title = 'Are you sure?', action = 'Confirm', da
   dialog.showModal();
   dialog.querySelector('[data-choice="cancel"]').focus();
  });
+}
+function closeCommentCard(){
+ commentCardVersion++;
+ if(commentCard){commentCard.dialog.close();commentCard=null;}
+}
+function renderCommentCard(card){
+ const p=card.profile;
+ const actions=p.relationship==='none'?'<button type="button" class="primary" data-card-action="send">Add Friend</button>':
+  p.relationship==='incoming'?'<button type="button" class="primary" data-card-action="accept">Accept</button><button type="button" class="secondary" data-card-action="decline">Decline</button>':
+  p.relationship==='outgoing'?'<button type="button" class="secondary" disabled>Request Sent</button>':
+  p.relationship==='friends'?'<button type="button" class="secondary" disabled>Friends</button>':'';
+ card.dialog.innerHTML=`<div class="azice-confirm-content"><div class="comment-user-heading">${avatar(p,'small')}<div><h2 id="comment-user-title">${html(p.display_name)}</h2><p>@${html(p.username)}</p></div></div><div class="azice-confirm-actions" aria-live="polite">${actions}<button type="button" class="secondary" data-card-action="close">Close</button></div></div>`;
+ loadImages();
+}
+async function openCommentAuthor(commentId){
+ closeCommentCard();
+ const version=commentCardVersion,account=accountVersion,previousFocus=document.activeElement;
+ const profile=await api.commentAuthor(commentId);
+ if(version!==commentCardVersion||account!==accountVersion)return;
+ const dialog=document.createElement('dialog');
+ dialog.className='azice-confirm comment-user-card';dialog.setAttribute('aria-labelledby','comment-user-title');
+ const card={dialog,profile,commentId,account,busy:false};commentCard=card;
+ dialog.addEventListener('close',()=>{
+  dialog.remove();if(commentCard===card){commentCard=null;commentCardVersion++;}
+  if(previousFocus?.isConnected)previousFocus.focus();
+ },{once:true});
+ dialog.addEventListener('click',async event=>{
+  const action=event.target.closest('[data-card-action]')?.dataset.cardAction;
+  if(action==='close'||event.target===dialog){closeCommentCard();return;}
+  if(!action||card.busy)return;
+  card.busy=true;
+  for(const button of dialog.querySelectorAll('button'))if(button.dataset.cardAction!=='close')button.disabled=true;
+  try{
+   // Recheck visibility and current relationship; never trust a stale card or DOM request ID.
+   const current=await api.commentAuthor(card.commentId);
+   if(commentCard!==card||card.account!==accountVersion)return;
+   if(action==='send'&&current.relationship==='none')await api.sendCommentRequest(card.commentId);
+   else if(['accept','decline'].includes(action)&&current.relationship==='incoming')await api.requestAction(current.request_id,action);
+   if(card.account!==accountVersion)return;
+   await refreshFriends();
+   if(commentCard!==card||card.account!==accountVersion)return;
+   const updated=await api.commentAuthor(card.commentId);
+   if(commentCard!==card||card.account!==accountVersion)return;
+   card.profile=updated;renderCommentCard(card);
+   dialog.querySelector('[data-card-action]:not([disabled])')?.focus();
+  }catch(error){
+   if(commentCard!==card||card.account!==accountVersion)return;
+   // Close stale cards rather than leaving details visible after access is removed.
+   closeCommentCard();
+   const safe=['Too many friend requests. Try again later.','A request is already pending','Already friends'];
+   showToast(safe.includes(error.message)?error.message:'User unavailable.');
+  }finally{card.busy=false;}
+ });
+ document.body.append(dialog);renderCommentCard(card);dialog.showModal();
+ dialog.querySelector('[data-card-action]:not([disabled])')?.focus();
 }
 async function loadSupabase(){
  if(!cloudEnabled) return createDemo();
@@ -223,7 +280,7 @@ function postCard(p){
    </div>
    ${state.activeReactions===p.id&&active?`<div class="reaction-picker">${EMOJI.map(e=>`<button data-action="react" data-id="${html(p.id)}" data-emoji="${e}" aria-label="React ${e}" class="emoji-btn ${myEmoji===e?'active':''}">${e}</button>`).join('')}${myEmoji?`<button data-action="react" data-id="${html(p.id)}" data-emoji="" class="unreact">Remove</button>`:''}</div>`:''}
    ${open?`<section class="comments-area" aria-label="Comments">
-     ${(p.comments||[]).length ? p.comments.map(c=>`<div class="comment"><b>${html(c.author_id===state.user.id?'You':c.author_name)}</b> ${html(c.body)}<small>${fmt(c.created_at)}</small></div>`).join(''):'<p class="muted small-text">No comments yet.</p>'}
+     ${(p.comments||[]).length ? p.comments.map(c=>`<div class="comment"><button type="button" class="comment-author" data-action="comment-user" data-id="${html(c.id)}">${html(c.author_id===state.user.id?'You':c.author_name)}</button> ${html(c.body)}<small>${fmt(c.created_at)}</small></div>`).join(''):'<p class="muted small-text">No comments yet.</p>'}
      ${active?`<form data-form="comment" data-post="${html(p.id)}" class="comment-form"><input name="body" maxlength="300" required placeholder="Write a comment..." aria-label="Write a comment"><button type="submit" aria-label="Post comment">➤</button></form>`:'<div class="muted small-text">Comments are closed after 48 hours.</div>'}
    </section>`:''}
  </article>`;
@@ -349,6 +406,7 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
  case 'feed': stopCamera();await home();break;
  case 'profile':stopCamera();await openProfile();break;
  case 'friends':stopCamera();await openFriends();break;
+ case 'comment-user':await openCommentAuthor(id);break;
  case 'friend-profile':stopCamera();await openFriendProfile(id);break;
  case 'start-post':state.draft={kind:'drank',reason:'',files:[],step:0};state.view='new';render();break;
  case 'cancel-post':stopCamera();state.draft.files=[];await home();break;

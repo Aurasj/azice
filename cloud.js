@@ -37,6 +37,13 @@ export const isSessionMissingOrInvalid = err => {
 
 export function createCloud(client) {
   const run = async q => { const {data,error}=await q; if(error) throw error; return data; };
+  const commentRpc = async (name,commentId) => {
+    try { return await run(client.rpc(name,{p_comment_id:commentId})); }
+    catch(error) {
+      const safe=['Too many friend requests. Try again later.','A request is already pending','Already friends','You cannot add yourself'];
+      throw Error(safe.includes(error.message)?error.message:'User unavailable.');
+    }
+  };
   const getUser = async () => {
     try {
       const { data, error } = await client.auth.getUser();
@@ -105,6 +112,12 @@ export function createCloud(client) {
     rotateInvite:async()=>run(client.rpc('rotate_invite')),
     previewInvite:async token=>{const rows=await run(client.rpc('preview_invite',{p_token:token}));return rows?.[0]||null;},
     sendRequest:async token=>run(client.rpc('send_friend_request',{p_token:token})),
+    commentAuthor:async commentId=>{
+      const rows=await commentRpc('comment_author_card',commentId);
+      if(!rows?.[0])throw Error('User unavailable.');
+      return rows[0];
+    },
+    sendCommentRequest:async commentId=>commentRpc('send_comment_friend_request',commentId),
     friendData:async()=>{
       const u=await me();
       const [edges, requests] = await Promise.all([
@@ -112,8 +125,12 @@ export function createCloud(client) {
         run(client.from('friend_requests').select('id,sender_id,receiver_id,status,created_at').eq('status','pending').or(`sender_id.eq.${u.id},receiver_id.eq.${u.id}`))
       ]);
       const friendIds=edges.map(r=>r.user_a===u.id?r.user_b:r.user_a);
-      const ids=[...friendIds,...requests.map(r=>r.sender_id===u.id?r.receiver_id:r.sender_id)];
-      const profiles=await profileMap(ids);
+      // Pending requests never grant direct access to private profile rows.
+      const [friends,pending]=await Promise.all([
+        profileMap(friendIds),
+        requests.length?run(client.rpc('pending_friend_request_profiles')):Promise.resolve([])
+      ]);
+      const profiles=[...friends,...pending];
       const get=id=>profiles.find(p=>p.id===id)||{id,display_name:'Unknown',username:'unknown'};
       return {friends:friendIds.map(get),incoming:requests.filter(r=>r.receiver_id===u.id).map(r=>({...r,profile:get(r.sender_id)})),outgoing:requests.filter(r=>r.sender_id===u.id).map(r=>({...r,profile:get(r.receiver_id)}))};
     },
