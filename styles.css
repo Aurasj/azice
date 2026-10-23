@@ -21,3 +21,18 @@
 .azice-confirm-actions button{flex:1;min-width:0;min-height:46px}
 .azice-danger-button{border:0;border-radius:12px;padding:12px 16px;background:#a63e42;color:#fff;font-size:.87rem;font-weight:750}
 .azice-confirm button:focus-visible{outline:2px solid #f2a65a;outline-offset:2px}
+
+.header-actions{display:flex;align-items:center;gap:12px}.friends-button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:#f5f2ed;font-size:.76rem;font-weight:700}.friend-request-dot{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--surface)}
+/* Friends-only layout; retain the page's normal document scrolling. */
+.friends-screen{display:flex;flex-direction:column;gap:24px;min-width:0;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.friends-screen .subheader{margin-bottom:0}
+.friends-screen .friends-section,.friends-screen .invite-card{min-width:0}
+.friends-screen .section-heading{margin:0 2px 12px}
+.friends-screen .friends-section>p{margin-bottom:0}
+.friends-screen .invite-url{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+.friends-screen .friend-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:8px 10px;align-items:center;padding:14px 0}
+.friends-screen .friend-row>div:nth-child(2){overflow-wrap:anywhere}
+.friends-screen .friend-action{flex-wrap:nowrap;gap:6px;max-width:none}
+.friends-screen .friend-action button{min-height:36px;white-space:nowrap}
+@media(max-width:380px){.friends-screen .friend-row{grid-template-columns:38px minmax(0,1fr)}.friends-screen .friend-action{grid-column:2;justify-self:start}}
+.feed-invite-card{padding:16px;border:1px solid #343842;border-radius:16px;background:var(--surface)}.feed-invite-card h2{margin:0 0 8px}.feed-invite-card p{margin:0 0 12px;color:var(--muted);font-size:.8rem}

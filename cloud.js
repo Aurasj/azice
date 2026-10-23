@@ -74,6 +74,7 @@ export function createCloud(client) {
   const postQuery = () => client.from('posts').select('id,author_id,kind,reason,published_at,post_photos(slot,path),comments(id,post_id,author_id,author_name,body,created_at),reactions(post_id,user_id,emoji)').eq('status','published');
   return {
     mode:'cloud', getUser,
+    onAuthChange:callback=>client.auth.onAuthStateChange((_event,session)=>callback(session?.user||null)).data.subscription,
     signIn:async(email,password)=>{const data=await run(client.auth.signInWithPassword({email,password}));return data.user;},
     signUp:async(email,password)=>{const data=await run(client.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin}}));return data.session ? data.user : null;},
     google:async()=>{const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});if(error)throw error;},
