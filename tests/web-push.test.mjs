@@ -202,16 +202,25 @@ test('permanent browser settings preserve enable/disable lifecycle, device statu
  h.context.navigator.userAgent='iPhone Safari';assert.match(h.a.notificationsView(),/Share → Add to Home Screen/);
 });
 
-test('five native switch rows preserve category saving, reminder defaults, quiet hours and failed-save rollback',async()=>{
+test('five native switch rows preserve category saving, reminder defaults, delivery timing and failed-save rollback',async()=>{
  const h=app();await h.a.openNotifications();
  const markup=h.root.innerHTML;assert.equal((markup.match(/role="switch"/g)||[]).length,5);
  assert.equal((markup.match(/class="notification-switch-row"/g)||[]).length,5);
+ assert.match(markup,/role="group" aria-label="Notification preferences"/);assert.doesNotMatch(markup,/<fieldset|<legend|Notification categories/);
+ assert.equal((markup.match(/<label class="notification-switch-row">[\s\S]*?<input type="checkbox" role="switch"/g)||[]).length,5);
  assert.doesNotMatch(markup.match(/<input[^>]+data-push-category="posting_reminders"[^>]*>/)[0],/checked/);
- assert.match(markup,/Quiet hours: 10 PM–9 AM/);assert.match(markup,/Optional · off by default/);
+ assert.match(markup,/Notifications can arrive anytime/);assert.match(markup,/device’s Do Not Disturb/);assert.match(markup,/Optional posting reminders arrive around 8 PM/);assert.doesNotMatch(markup,/Quiet hours/);assert.match(markup,/Optional · off by default/);
  let saved;h.api.saveNotificationPreferences=async p=>{saved=p;return {...h.a.pushDefaults(),...p};};
  const input={dataset:{pushCategory:'posting_reminders'},checked:true};await h.events.change({target:input});
  assert.equal(saved.posting_reminders,true);assert.match(h.a.notificationsView(),/data-push-category="posting_reminders" checked/);assert.equal(h.asks,0);
  h.api.saveNotificationPreferences=async()=>{throw Error('Offline');};input.checked=false;await h.events.change({target:input});assert.equal(input.checked,true);
+});
+
+test('compact notification group keeps each native switch disabled when configuration is missing',()=>{
+ const h=app();h.context.window.AZICE_CONFIG.pushPublicKey='';const markup=h.a.notificationsView();
+ assert.match(markup,/role="group" aria-label="Notification preferences" aria-disabled="true"/);
+ const inputs=markup.match(/<input[^>]+data-push-category[^>]*>/g);assert.equal(inputs.length,5);
+ for(const input of inputs)assert.match(input,/\bdisabled\b/);
 });
 
 test('regular browser tabs show only installation when eligible; standalone Android and iOS never show installation',async()=>{

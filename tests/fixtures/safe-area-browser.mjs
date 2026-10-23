@@ -71,6 +71,13 @@ function checkLayout(){
  }
  const notificationRows=[...document.querySelectorAll('.notification-switch-row')];if(notificationRows.length){
   check('Exactly five notification switch rows',notificationRows.length===5);
+  check('Compact notification group has an accessible name without fieldset chrome',!!document.querySelector('.notification-categories[role="group"][aria-label="Notification preferences"]')&&!document.querySelector('.notification-categories legend,fieldset.notification-categories'));
+  const switchRight=box(notificationRows[0].querySelector('.notification-switch')).right;
+  for(const row of notificationRows){const input=row.querySelector('input'),target=row.querySelector('.notification-switch'),track=row.querySelector('.notification-switch-track');
+   check('Compact switch retains 44px target and consistent right alignment',box(target).width>=44&&box(target).height>=44&&Math.abs(box(target).right-switchRight)<1);
+   check('Switch visual is 40 by 24 pixels',box(track).width===40&&box(track).height===24);
+   input.focus({preventScroll:true});check('Native switch remains keyboard focusable and labelled',document.activeElement===input&&input.labels.length===1);
+  }
   for(const row of notificationRows)check('Notification row has a safe, full-width tap target',box(row).height>=44&&xSafe(row)&&box(row.querySelector('.notification-switch')).right<=box(row).right);
   check('Posting reminders default off',!document.querySelector('[data-push-category="posting_reminders"]').checked);
   const last=document.querySelector('.notification-disable')||document.querySelector('.notification-quiet');last.scrollIntoView({block:'start'});
