@@ -7,7 +7,7 @@ if (incomingInvite) sessionStorage.setItem('azice_pending_invite', incomingInvit
 const savedInvite = () => sessionStorage.getItem('azice_pending_invite');
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabasePublishableKey);
 // MAJOR.MINOR.FEATURE.PATCH — change intentionally for releases, never per commit.
-const APP_VERSION='0.1.0.1';
+const APP_VERSION='0.1.0.2';
 function parseRecoveryLink(search=location.search,hash=location.hash||''){
  const query=new URLSearchParams(search||''),fragment=new URLSearchParams(hash.replace(/^#/,''));
  const active=query.get('recovery')==='1'||query.get('type')==='recovery'||fragment.get('type')==='recovery';
@@ -644,7 +644,7 @@ function profileView(){
  <div class="section-heading"><h2>Recent Posts</h2><span>${state.history.length} posts</span></div>
  ${state.history.length?state.history.slice(0,8).map(postCard).join(''):'<div class="empty-small">Your memories will appear here.</div>'}
  <div class="profile-actions"><button class="text-button" data-action="install">Install App</button><button class="text-button" data-action="sign-out">Sign Out</button>${state.demo?'<button class="text-button" data-action="reset-demo">Reset Demo</button>':'<button class="text-button danger-text" data-action="delete-account">Delete Account</button>'}</div>
- <p class="privacy-contact">Safety & Privacy: Contact <b>privacy@azice.aagameri.tech</b> for content removal or takedown assistance.</p>`,'profile');
+ <p class="privacy-contact">Safety & Privacy: Contact <b>aagameriaa@gmail.com</b> for content removal or takedown assistance.</p>`,'profile');
 }
 function friendProfileView(){const p=state.target;return shell(`${backBar('Profile','friends')}${profileHeader(p)}<div class="section-heading"><h2>Last 30 Days</h2></div>${state.history.length?state.history.map(postCard).join(''):'<div class="empty-small">No recent posts to show.</div>'}`,'profile');}
 function dayView(){const posts=state.history.filter(p=>dayISO(p.published_at)===state.selectedDate);const title=new Date(`${state.selectedDate}T12:00:00`).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});return shell(`${backBar(title)}<div class="section-heading"><h2>Your Memories</h2><span>${posts.length} posts</span></div>${posts.length?posts.map(postCard).join(''):'<div class="empty-small">Nothing posted on this day.</div>'}`,'profile');}
