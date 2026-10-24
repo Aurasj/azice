@@ -293,3 +293,10 @@ test('demo: account deletion wipes posts, reactions, comments, friends, and rese
   assert.equal(myProfile.is_18_plus_confirmed, false);
 });
 
+test('demo: both post types share the daily cap and rejected attempts preserve existing posts',async()=>{
+ resetStorage();const api=createDemo();assert.equal((await api.getDailyPostingStatus()).count,0);
+ await api.createPost('sober','One',[]);await api.createPost('drank','Two',['camera-photo']);await api.createPost('sober','Three',[]);
+ assert.equal((await api.getDailyPostingStatus()).count,3);
+ await assert.rejects(api.createPost('sober','Four',[]),error=>error.code==='P0001'&&error.message==='DAILY_POST_LIMIT');
+ assert.equal((await api.getDailyPostingStatus()).count,3);
+});

@@ -392,3 +392,9 @@ test('post: createPost cleanup is best-effort — draft DELETE failure does not 
     }
   );
 });
+test('post: daily cap rejection removes uploaded photos and draft while retaining the original limit code',async()=>{
+ const removedPaths=[],deletedDraftIds=[],error={code:'P0001',message:'DAILY_POST_LIMIT'};
+ const api=createCloud(buildClient({publishRpcError:error,removedPaths,deletedDraftIds}));
+ await assert.rejects(api.createPost('drank','Valid reason',[new Blob(['jpeg'],{type:'image/jpeg'})]),err=>err===error);
+ assert.equal(removedPaths.length,1);assert.equal(deletedDraftIds.length,1);
+});

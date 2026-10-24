@@ -108,6 +108,7 @@ export function createCloud(client) {
     },
     getProfile:async id=>run(client.from('profiles').select('id,display_name,username,bio,avatar_path').eq('id',id).maybeSingle()),
     getNotificationPreferences:async()=>{const u=await me();return run(client.from('notification_preferences').select('*').eq('user_id',u.id).maybeSingle());},
+    getDailyPostingStatus:async()=>run(client.rpc('get_daily_posting_status',{p_timezone:Intl.DateTimeFormat().resolvedOptions().timeZone})),
     saveNotificationPreferences:async preferences=>{const data=await run(client.rpc('save_notification_preferences',{p_preferences:preferences}));return Array.isArray(data)?data[0]:data;},
     pushSubscription:async body=>{let timer;try{const {error}=await Promise.race([client.functions.invoke('push-subscriptions',{body}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Could not update notifications. Please try again.')),8000);})]);if(error)throw Error('Could not update notifications. Please try again.');}finally{clearTimeout(timer);}},
     resolveNotification:async id=>run(client.rpc('resolve_notification',{p_id:id})),

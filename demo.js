@@ -81,10 +81,12 @@ export function createDemo() {
     getHistory:async(id)=>clone().posts.filter(p=>p.author_id===id&&(id===current || (db.friends.includes(id)&&Date.now()-new Date(p.published_at).getTime()<30*86400000))).sort((a,b)=>b.published_at.localeCompare(a.published_at)).map(withExtras),
     getPhotos:async post=>post.photos||[],
     imageUrl:async path=>path,
+    getDailyPostingStatus:async()=>dailyStatus(),
     createPost:async(kind,reason,files)=>{
       if(!['drank','sober'].includes(kind)||!reason?.trim()||reason.length>300||files.length>3||(kind==='drank'&&files.length===0)) throw Error('Invalid post details.');
       const p={id:uuid(),author_id:current,kind,reason,status:'published',published_at:new Date().toISOString(),photos:[]};
       for(const file of files) p.photos.push({path:await imgData(file)});
+      if(dailyStatus().count>=3)throw Object.assign(Error('DAILY_POST_LIMIT'),{code:'P0001'});
       db.posts.unshift(p); try{persist()}catch {db.posts.shift(); throw Error('Demo storage is full. Use fewer/smaller photos or connect Supabase.');}
       return p;
     },
@@ -103,6 +105,11 @@ export function createDemo() {
       persist();
     }
   };
+  function dailyStatus(){
+    const stamp=new Date(),end=new Date(stamp);end.setHours(24,0,0,0);
+    const day=date=>[date.getFullYear(),date.getMonth(),date.getDate()].join('-');
+    return {count:db.posts.filter(p=>p.author_id===current&&p.status==='published'&&day(new Date(p.published_at))===day(stamp)).length,limit:3,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,reset_at:end.toISOString(),server_now:stamp.toISOString()};
+  }
   function commentAuthor(commentId){
     const c=db.comments.find(c=>c.id===commentId),p=c&&db.posts.find(p=>p.id===c.post_id);
     if(!db.user||!p||p.status!=='published'||!(p.author_id===current||(db.friends.includes(p.author_id)&&Date.now()-new Date(p.published_at).getTime()<=30*86400000)))throw Error('User unavailable.');

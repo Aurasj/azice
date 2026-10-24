@@ -29,12 +29,31 @@ const state = {
   feed:[], history:[], month:new Date(), selectedDate:'', target:null, inviteToken:null,
   activity:{items:[],unread:false,loading:false,error:null},postReturn:'feed',
   activeComments:new Set(), activeReactions:null, authSignUp:false,
-  draft:{kind:'drank',reason:'',files:[],step:0},
+  draft:{kind:'drank',reason:'',files:[],step:0},dailyPosting:null,postingError:false,publishing:false,
   cameraStream:null, cameraError:null, installPrompt:null, installHelp:false,
   cache:new Map(), demo:false
 };
 let api;
 let usernameRequestBusy=false;
+const DAILY_POST_LIMIT_MESSAGE="You've reached today's limit. Come back tomorrow!";
+let postingTimer=null,postingRefreshVersion=0;
+function dailyPostingCount(){return state.dailyPosting?`${Math.min(3,state.dailyPosting.count)} of 3 today`:state.postingError?"Couldn't check today's posts. Try again.":"Checking today's posts…";}
+function dailyPostLimitReached(){return state.dailyPosting?.count>=3;}
+function updateDailyPostingUI(){
+ const count=$('#daily-post-count'),note=$('#daily-post-limit'),next=$('[data-action="post-next"]');
+ if(count)count.textContent=dailyPostingCount();if(note)note.hidden=!dailyPostLimitReached();
+ const retry=$('#daily-post-retry');if(retry)retry.hidden=!state.postingError;
+ if(next&&state.draft.step===3)next.disabled=state.publishing||!state.dailyPosting||dailyPostLimitReached();
+}
+async function refreshDailyPosting(){
+ const account=accountVersion,version=++postingRefreshVersion;clearTimeout(postingTimer);postingTimer=null;
+ try{const status=await api.getDailyPostingStatus();if(account!==accountVersion||version!==postingRefreshVersion)return null;
+  if(!status||!Number.isInteger(status.count)||status.count<0||!Number.isFinite(Date.parse(status.reset_at))||!Number.isFinite(Date.parse(status.server_now)))throw Error('Invalid posting status');
+  state.dailyPosting=status;state.postingError=false;
+  if(['new','camera'].includes(state.view))postingTimer=setTimeout(()=>{if(document.visibilityState!=='hidden')refreshDailyPosting();},Math.max(100,Math.min(2147483647,Date.parse(status.reset_at)-Date.parse(status.server_now)+100)));
+  updateDailyPostingUI();return status;
+ }catch{if(account===accountVersion&&version===postingRefreshVersion){state.dailyPosting=null;state.postingError=true;updateDailyPostingUI();}return null;}
+}
 const PUSH_CATEGORIES={friend_requests:'Friend requests',new_posts:'New posts',comments:'Comments',reactions:'Reactions',posting_reminders:'Posting reminders (optional)'};
 const pushDefaults=()=>({enabled:false,friend_requests:true,new_posts:true,comments:true,reactions:true,posting_reminders:false});
 let pushSettings=pushDefaults(),pushSettingsLoaded=false,pushBusy=false,pushSync=Promise.resolve(),pendingNotification=new URLSearchParams(location.search).get('notification');
@@ -244,6 +263,7 @@ function setCurrentUser(user){
   state.friends={friends:[],incoming:[],outgoing:[]};state.friendsLoaded=false;state.inviteToken=null;
   state.profile=null;state.feed=[];state.history=[];state.cache.clear();
   state.openedPost=null;pushSettings=pushDefaults();pushBusy=false;usernameRequestBusy=false;
+  clearTimeout(postingTimer);postingTimer=null;postingRefreshVersion++;state.dailyPosting=null;state.postingError=false;state.publishing=false;
  }
  state.user=user;
  pushSync=syncPushAccount(user).catch(()=>{});
@@ -317,6 +337,7 @@ function refreshOnReturn(){
   if(account!==accountVersion)return;
   if(user&&!pushBusy&&(!pushSettingsLoaded||pushSettings.enabled&&pushSettings.timezone!==Intl.DateTimeFormat().resolvedOptions().timeZone))await loadPushSettings();
   if(account!==accountVersion)return;
+  if(user&&['new','camera'].includes(state.view))await refreshDailyPosting();if(account!==accountVersion)return;
   if(user)await refreshActivity();if(account!==accountVersion)return;
   if(await refreshFriends()&&['friends','notifications'].includes(state.view))render();
  })().catch(e=>console.warn('Could not refresh friend requests.',e)).finally(()=>{returnRefresh=null;});
@@ -622,12 +643,13 @@ function newPostView(){const d=state.draft;
  if(d.step===1)content=`<h1>Capture the moment</h1><p class="muted">Up to 3 photos, straight from your camera. ${d.kind==='drank'?'At least 1 required.':'Photos are optional.'}</p><div class="capture-list">${d.files.map((f,i)=>`<div class="capture-thumb"><button type="button" class="preview-photo" data-action="view-draft-photo" data-id="${i}" aria-label="Open full captured photo ${i+1}"><img src="${draftPhotoURL(f)}" alt="Captured photo"></button><button data-action="remove-photo" data-id="${i}" aria-label="Remove photo">×</button></div>`).join('')}${d.files.length<3?'<button class="capture-add" data-action="open-camera">＋<small>Take Photo</small></button>':''}</div><div class="camera-note">📷 Photos must be taken in the app. Gallery uploads are disabled for posts.</div>`;
  if(d.step===2)content=`<h1>What's your reason?</h1><p class="muted">A good excuse makes a good story.</p><textarea id="post-reason" maxlength="300" rows="5" placeholder="Tell your story...">${html(d.reason)}</textarea><div class="char-count"><span>Required</span><span id="reason-counter">${d.reason.length}/300</span></div><p class="section-label">Need inspiration?</p><div class="suggestions">${SUGGEST[d.kind].map((s,i)=>`<button data-action="suggest" data-id="${i}">${html(s)}</button>`).join('')}</div>`;
  if(d.step===3)content=`<h1>Review your post</h1><p class="muted">Once published, posts can't be edited.</p><div class="review-card"><span class="kind ${d.kind==='drank'?'drink':'sober'}">${d.kind==='drank'?'🍺 I Drank':'🧃 I Didn\'t Drink'}</span><div class="photo-scroller" aria-label="Preview photos">${d.files.map((f,i)=>photoCard({path:draftPhotoURL(f)},i)).join('')}</div><p>${html(d.reason)}</p></div><p class="safety-note">Your post is shared only with confirmed friends. It stays in Feed for 48 hours, then moves to your private archive.</p>`;
- return shell(`${backBar('New Post','cancel-post')}<div class="step-indicator">STEP ${d.step+1} OF 4</div><div class="new-post">${content}</div><div class="post-actions">${d.step>0?'<button class="secondary" data-action="post-back">Back</button>':''}<button class="primary" data-action="post-next">${d.step===3?'Publish Post':'Continue →'}</button></div>`,'feed');
+ return shell(`${backBar('New Post','cancel-post')}<div class="daily-post-count muted small-text"><span id="daily-post-count" role="status">${dailyPostingCount()}</span> <button class="inline-link" id="daily-post-retry" data-action="retry-post-count" ${state.postingError?'':'hidden'}>Retry</button></div><p class="daily-post-limit small-text" id="daily-post-limit" role="status" ${dailyPostLimitReached()?'':'hidden'}>${DAILY_POST_LIMIT_MESSAGE}</p><div class="step-indicator">STEP ${d.step+1} OF 4</div><div class="new-post">${content}</div><div class="post-actions">${d.step>0?'<button class="secondary" data-action="post-back">Back</button>':''}<button class="primary" data-action="post-next" ${d.step===3&&(state.publishing||!state.dailyPosting||dailyPostLimitReached())?'disabled':''}>${d.step===3?'Publish Post':'Continue →'}</button></div>`,'feed');
 }
 function cameraView(){return `<main class="camera-screen"><div class="camera-header"><button data-action="close-camera" aria-label="Close camera">×</button><span>Take Photo</span><button data-action="flip-camera" aria-label="Switch camera">⟳</button></div>${state.cameraError?`<div class="camera-error">${html(state.cameraError)}</div>`:'<video id="camera-preview" autoplay playsinline muted></video>'}<div class="camera-footer"><span>${state.draft.files.length}/3 photos</span><button class="shutter" data-action="capture-photo" aria-label="Capture photo"></button><span>Camera only</span></div></main>`;}
 function inviteView(preview){return `<main class="centered auth-screen">${brand()}<div class="auth-panel"><h1>Friend Invitation</h1>${preview?`<p><b>${html(preview.display_name)}</b> invited you to connect on AziCe?.</p><p class="muted">@${html(preview.username)} · Posts remain private until accepted.</p><button class="primary" data-action="send-request">Send Friend Request</button>`:'<p>This invite link has expired or was revoked.</p>'}<button class="secondary" data-action="dismiss-invite">Go to Feed</button></div></main>`;}
 function installInfo(){return `<div class="modal-backdrop" data-action="close-install"><div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()"><h2>Install AziCe?</h2><p>On iPhone: open in Safari, tap Share, then <b>Add to Home Screen</b> and enable <b>Open as Web App</b> if offered.</p><p>On Android: open the browser menu and select <b>Install app</b> or <b>Add to Home screen</b>.</p><button class="primary" data-action="close-install">Got It</button></div></div>`;}
 function render(){
+ if(!['new','camera'].includes(state.view)){clearTimeout(postingTimer);postingTimer=null;}
  cleanDraftPhotoURLs();
  const root=$('#app');
  switch(state.view){
@@ -730,7 +752,8 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
  case 'friends':stopCamera();await openFriends();break;
  case 'comment-user':await openCommentAuthor(id);break;
  case 'friend-profile':stopCamera();await openFriendProfile(id);break;
- case 'start-post':state.draft={kind:'drank',reason:'',files:[],step:0};state.view='new';render();break;
+ case 'retry-post-count':await refreshDailyPosting();break;
+ case 'start-post':state.draft={kind:'drank',reason:'',files:[],step:0};state.dailyPosting=null;state.postingError=false;state.view='new';render();await refreshDailyPosting();break;
  case 'cancel-post':stopCamera();state.draft.files=[];await home();break;
  case 'choose-kind':state.draft.kind=val;render();break;
  case 'post-back':state.draft.step=Math.max(0,state.draft.step-1);render();break;
@@ -743,22 +766,29 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
     if(!d.reason.trim())throw Error('Your reason is required.');
   }
   if(d.step===3){
-    if(button.disabled)return; // prevent duplicate publish on rapid taps
-    if(!await confirmInApp('You cannot edit it later.', {title:'Publish this post?',action:'Publish'}))return;
-    button.disabled=true;button.textContent='Publishing...';
+    if(button.disabled||state.publishing)return;
+    const version=accountVersion;state.publishing=true;button.disabled=true;
     try{
+      const status=await refreshDailyPosting();if(version!==accountVersion)return;
+      if(!status){showToast("Couldn't check today's posts. Please try again.");return;}
+      if(dailyPostLimitReached()){showToast(DAILY_POST_LIMIT_MESSAGE);return;}
+      if(!await confirmInApp('You cannot edit it later.', {title:'Publish this post?',action:'Publish'}))return;
+      if(version!==accountVersion)return;button.textContent='Publishing...';
       await api.createPost(d.kind,d.reason.trim(),d.files);
+      if(version!==accountVersion)return;await refreshDailyPosting();if(version!==accountVersion)return;
       // Success: clear draft and go to feed
       d.files=[];d.reason='';d.step=0;
       showToast('Post published!');
       await home();
     }catch(err){
+      if(version!==accountVersion)return;
       // Failure: restore UI so user can retry with their photos and reason preserved
       button.disabled=false;button.textContent='Publish Post';
       // Do NOT clear d.files or d.reason — user keeps their work
-      showToast(err.message||'Failed to publish. Please try again.');
+      if((err.code==='P0001'&&err.message==='DAILY_POST_LIMIT')||err.code==='40001'){await refreshDailyPosting();if(version!==accountVersion)return;showToast(err.code==='P0001'||dailyPostLimitReached()?DAILY_POST_LIMIT_MESSAGE:'Could not publish. Please try again.');}
+      else showToast(err.message||'Failed to publish. Please try again.');
       console.error('[publish] error:', err);
-    }
+    }finally{if(version===accountVersion){state.publishing=false;button.disabled=!state.dailyPosting||dailyPostLimitReached();button.textContent='Publish Post';updateDailyPostingUI();}}
     return;
   }
   d.step+=1;render();break;
