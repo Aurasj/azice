@@ -28,6 +28,8 @@
 .friends-screen .subheader{margin-bottom:0}
 .username-friend-form{min-width:0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}.username-friend-form label{margin-bottom:8px}.username-friend-controls{display:flex;align-items:center;gap:8px}.username-friend-controls input{flex:1;width:0;min-height:46px}.username-friend-controls .primary{width:auto;flex-shrink:0;min-height:46px}
 .daily-post-count{margin:-8px 0 14px}.daily-post-limit{color:var(--accent);line-height:1.5;margin:0 0 16px}
+.header-brand{display:flex;align-items:center;gap:8px;min-width:0;flex-shrink:0}.beta-badge{color:var(--accent);font-size:.55rem;font-weight:750;line-height:1.2;letter-spacing:.02em;white-space:nowrap;padding:3px 5px;border:1px solid #59432e;border-radius:5px}.forgot-password{display:block;margin:4px auto 0;font-size:.78rem;min-height:44px}.recovery-screen .auth-panel{min-width:0}.recovery-screen input{width:100%}.recovery-feedback{color:#f5bd8c;font-size:.82rem;overflow-wrap:anywhere}.recovery-back{display:block;margin:8px auto 0;min-height:44px}.recovery-screen .text-button{min-height:44px}
+@media(max-width:430px){.header-brand{flex-direction:column;align-items:flex-start;gap:3px}.beta-badge{padding:2px 4px;font-size:.52rem}}
 .friends-screen .friends-section,.friends-screen .invite-card{min-width:0}
 .friends-screen .section-heading{margin:0 2px 12px}
 .friends-screen .friends-section>p{margin-bottom:0}

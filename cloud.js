@@ -35,7 +35,14 @@ export const isSessionMissingOrInvalid = err => {
   return false;
 };
 
-export function createCloud(client) {
+// PKCE verifier must survive an email opening a new tab; recovery sessions stay
+// tab-local and separate from the ordinary application's session/storage key.
+export function createRecoveryStorage(shared,tab){return {
+  getItem:key=>(key.endsWith('-code-verifier')?shared:tab).getItem(key),
+  setItem:(key,value)=>(key.endsWith('-code-verifier')?shared:tab).setItem(key,value),
+  removeItem:key=>(key.endsWith('-code-verifier')?shared:tab).removeItem(key)
+};}
+export function createCloud(client,{recoveryClient=null,origin=null}={}) {
   const run = async q => { const {data,error}=await q; if(error) throw error; return data; };
   const commentRpc = async (name,commentId) => {
     try { return await run(client.rpc(name,{p_comment_id:commentId})); }
@@ -79,9 +86,37 @@ export function createCloud(client) {
     return posts.map(p=>({...p,author:names.get(p.author_id)||{display_name:'Former friend',username:'unknown'},post_photos:(p.post_photos||[]).sort((a,b)=>a.slot-b.slot),comments:(p.comments||[]).sort((a,b)=>a.created_at.localeCompare(b.created_at)),reactions:p.reactions||[]}));
   };
   const postQuery = () => client.from('posts').select('id,author_id,kind,reason,published_at,post_photos(slot,path),comments(id,post_id,author_id,author_name,body,created_at),reactions(post_id,user_id,emoji)').eq('status','published');
+  const recoveryAuth=()=>{if(!recoveryClient)throw Error('Password recovery is unavailable.');return recoveryClient.auth;};
+  const verifiedRecovery=async expected=>{const {data,error}=await recoveryAuth().getUser();if(error||!data?.user||expected&&data.user.id!==expected)throw Object.assign(Error('Recovery link is invalid or expired.'),{code:'recovery_invalid'});return data.user;};
   return {
     mode:'cloud', getUser,
-    onAuthChange:callback=>client.auth.onAuthStateChange((_event,session)=>callback(session?.user||null)).data.subscription,
+    onAuthChange:callback=>client.auth.onAuthStateChange((event,session)=>callback(session?.user||null,event)).data.subscription,
+    requestPasswordReset:async email=>{
+      const redirectTo=new URL('/?recovery=1',origin||window.location.origin).href;
+      const {error}=await recoveryAuth().resetPasswordForEmail(email,{redirectTo});if(error)throw error;
+    },
+    beginPasswordRecovery:async link=>{
+      const auth=recoveryAuth();
+      if(link.kind==='resume'){if(!link.userId)throw Object.assign(Error('Recovery link is invalid or expired.'),{code:'recovery_invalid'});return verifiedRecovery(link.userId);}
+      // Do not sign out here: Auth sign-out also clears the PKCE code verifier.
+      // A successful exchange replaces only this tab's isolated recovery session.
+      let result;
+      if(link.kind==='implicit')result=await auth.setSession({access_token:link.accessToken,refresh_token:link.refreshToken});
+      else if(link.kind==='pkce')result=await auth.exchangeCodeForSession(link.code);
+      else if(link.kind==='token_hash')result=await auth.verifyOtp({token_hash:link.tokenHash,type:'recovery'});
+      else throw Object.assign(Error('Recovery link is invalid or expired.'),{code:'recovery_invalid'});
+      if(result.error)throw result.error;
+      const target=result.data?.user?.id||result.data?.session?.user?.id;
+      if(!target)throw Object.assign(Error('Recovery link is invalid or expired.'),{code:'recovery_invalid'});
+      return {id:target};
+    },
+    updateRecoveredPassword:async(password,userId)=>{
+      if(!userId)throw Object.assign(Error('Recovery link is invalid or expired.'),{code:'recovery_invalid'});
+      await verifiedRecovery(userId);
+      const {data,error}=await recoveryAuth().updateUser({password});if(error)throw error;
+      if(data?.user?.id!==userId)throw Object.assign(Error('Recovery session changed.'),{code:'recovery_invalid'});
+    },
+    endPasswordRecovery:async()=>{await recoveryAuth().signOut({scope:'local'}).catch(()=>{});},
     signIn:async(email,password)=>{const data=await run(client.auth.signInWithPassword({email,password}));return data.user;},
     signUp:async(email,password)=>{const data=await run(client.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin}}));return data.session ? data.user : null;},
     google:async()=>{const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});if(error)throw error;},

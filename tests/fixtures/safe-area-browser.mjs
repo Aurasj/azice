@@ -33,6 +33,7 @@ if(['notifications','profile'].includes(view)){
 }
 if(view==='camera')state.cameraError='Camera permission is disabled in this layout fixture.';
 if(view==='install')state.installHelp=true;
+if(view.startsWith('recovery-')){recovery.active=true;recovery.stage=view.slice(9);recovery.busy=false;recovery.error=recovery.stage==='invalid'?'This recovery link is invalid, expired or already used. Request a new link.':'';}
 render();
 if(view==='viewer')await openPhotoViewer(image);
 if(view==='dialog')confirmInApp('Check that this confirmation remains readable and its actions stay reachable on short screens. '.repeat(8),{title:'Layout test',action:'Continue'});
@@ -47,7 +48,7 @@ function checkLayout(){
  const scroll=scrollY;window.scrollTo(0,0);
  check('No horizontal document overflow',document.documentElement.scrollWidth<=innerWidth,{viewport:innerWidth,document:document.documentElement.scrollWidth});
  if(header){check('Shared header reserves top inset once',Math.abs(box(header).height-(68+top))<2,box(header).height);
-  check('Header actions do not overlap brand',box(header.querySelector('.brand')).right<=box(header.querySelector('.header-actions')).left+1);
+  check('Header actions do not overlap brand and beta badge',box(header.querySelector('.header-brand')||header.querySelector('.brand')).right<=box(header.querySelector('.header-actions')).left+1);
   for(const control of header.querySelectorAll('button,.friend-request-dot'))check('Header control clears cutout',box(control).top>=top-1&&xSafe(control),control.getAttribute('aria-label')||'request dot');}
  if(content){check('Content clears expanded navigation',number(content,'paddingBottom')-box(nav).height>=30,{padding:number(content,'paddingBottom'),nav:box(nav).height});
   const back=content.querySelector('.subheader');if(back)check('Page title/Back follows shared header',box(back).top>=box(header).bottom-1);
@@ -90,6 +91,10 @@ function checkLayout(){
   check('Username input has its visible accessible label',input.labels.length===1&&input.labels[0].textContent==='Enter username');
  }
  const centered=document.querySelector('.centered');if(centered)check('Standalone page content clears safe edges',number(centered,'paddingTop')>=top+1&&box(centered).left+number(centered,'paddingLeft')>=left-1);
+ const recoveryPage=document.querySelector('.recovery-screen');if(recoveryPage){
+  for(const control of recoveryPage.querySelectorAll('input,button'))check('Recovery control is safe and tappable',xSafe(control)&&box(control).height>=44);
+  const back=recoveryPage.querySelector('.recovery-back');back.scrollIntoView({block:'end'});check('Recovery actions scroll above Home indicator',box(back).bottom<=innerHeight-bottom+1);
+ }
  window.scrollTo(0,scroll);report.textContent=JSON.stringify({simulated:true,preset,view,viewport:[innerWidth,innerHeight],insets,passed:results.filter(r=>r.pass).length,failed:results.filter(r=>!r.pass),results},null,2);
 }
 checkLayout();window.addEventListener('resize',()=>requestAnimationFrame(checkLayout));

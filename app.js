@@ -1,11 +1,51 @@
 import { createDemo } from './demo.js';
-import { createCloud, isSessionMissingOrInvalid } from './cloud.js';
+import { createCloud, createRecoveryStorage, isSessionMissingOrInvalid } from './cloud.js';
 const $ = s => document.querySelector(s);
 const config = window.AZICE_CONFIG || {};
 const incomingInvite = new URLSearchParams(location.search).get('invite');
 if (incomingInvite) sessionStorage.setItem('azice_pending_invite', incomingInvite);
 const savedInvite = () => sessionStorage.getItem('azice_pending_invite');
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabasePublishableKey);
+// MAJOR.MINOR.FEATURE.PATCH — change intentionally for releases, never per commit.
+const APP_VERSION='0.1.0.1';
+function parseRecoveryLink(search=location.search,hash=location.hash||''){
+ const query=new URLSearchParams(search||''),fragment=new URLSearchParams(hash.replace(/^#/,''));
+ const active=query.get('recovery')==='1'||query.get('type')==='recovery'||fragment.get('type')==='recovery';
+ if(!active)return null;
+ if(query.has('error')||fragment.has('error'))return {kind:'invalid'};
+ if(fragment.get('type')==='recovery'&&fragment.get('access_token')&&fragment.get('refresh_token'))return {kind:'implicit',accessToken:fragment.get('access_token'),refreshToken:fragment.get('refresh_token')};
+ if(query.get('type')==='recovery'&&query.get('token_hash'))return {kind:'token_hash',tokenHash:query.get('token_hash')};
+ if(query.get('code'))return {kind:'pkce',code:query.get('code')};
+ return {kind:'resume'};
+}
+let recoveryLink=parseRecoveryLink();
+const recovery={active:Boolean(recoveryLink),stage:'checking',busy:false,error:'',email:'',target:null,expires:0};
+function scrubRecoveryURL(){
+ const params=new URLSearchParams(location.search||'');for(const key of ['code','token_hash','type','error','error_code','error_description'])params.delete(key);params.set('recovery','1');
+ window.history?.replaceState(window.history.state,'',`${location.pathname||'/'}?${params}`);
+}
+if(recovery.active){if(recoveryLink.kind!=='resume')sessionStorage.removeItem('azice_recovery_target');scrubRecoveryURL();}
+function recoveryMarker(){try{return JSON.parse(sessionStorage.getItem('azice_recovery_target')||'null');}catch{return null;}}
+function saveRecoveryMarker(){sessionStorage.setItem('azice_recovery_target',JSON.stringify({userId:recovery.target,expires:recovery.expires}));}
+async function checkRecoveryLink(){
+ if(recovery.busy)return;recovery.busy=true;recovery.stage='checking';recovery.error='';state.view='recovery';render();
+ try{
+  let link=recoveryLink;
+  if(link?.kind==='resume'){const saved=recoveryMarker();if(!saved?.userId||saved.expires<=Date.now())throw Error('Invalid recovery');link={kind:'resume',userId:saved.userId};recovery.expires=saved.expires;}
+  const user=await api.beginPasswordRecovery(link||{kind:'invalid'});
+  recovery.target=user.id;recovery.expires=link.kind==='resume'?recovery.expires:Date.now()+30*60000;saveRecoveryMarker();recoveryLink={kind:'resume'};recovery.stage='ready';
+ }catch{recovery.stage='invalid';recovery.error='This recovery link is invalid, expired or already used. Request a new link, or try again if your connection failed.';}
+ finally{recovery.busy=false;render();}
+}
+async function leaveRecovery(){
+ if(recovery.busy)return;recovery.busy=true;
+ try{if(!['request','sent'].includes(recovery.stage)&&api.endPasswordRecovery)await api.endPasswordRecovery();}finally{
+  sessionStorage.removeItem('azice_recovery_target');for(const key of ['azice-password-recovery','azice-password-recovery-user'])sessionStorage.removeItem(key);
+  recovery.active=false;recovery.stage='checking';recovery.target=null;recovery.expires=0;recoveryLink=null;recovery.busy=false;
+  const params=new URLSearchParams(location.search||'');params.delete('recovery');window.history?.replaceState(window.history.state,'',`${location.pathname||'/'}${params.size?'?'+params:''}`);
+  await boot();
+ }
+}
 const HOUR = 3600000, DAY = 86400000;
 const EMOJI = ['😂','❤️','😮','🔥','👏'];
 const USERNAME_FORMAT_MESSAGE='Use 3–24 lowercase letters, numbers or underscores.';
@@ -327,6 +367,7 @@ async function refreshFriends(){
  return true;
 }
 function refreshOnReturn(){
+ if(recovery.active)return;
  if(!api||document.visibilityState==='hidden'||returnRefresh)return returnRefresh;
  const account=accountVersion;
  returnRefresh=(async()=>{
@@ -445,16 +486,20 @@ async function loadSupabase(){
    if(window.supabase?.createClient)return resolve();
    const s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=()=>reject(Error('Could not load Supabase. Check your connection.'));document.head.append(s);
  });
- return createCloud(window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}));
+ const primary=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:!recovery.active}});
+ const reset=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{storageKey:'azice-password-recovery',storage:createRecoveryStorage(localStorage,sessionStorage),persistSession:true,autoRefreshToken:false,detectSessionInUrl:false,flowType:'pkce'}});
+ return createCloud(primary,{recoveryClient:reset,origin:location.origin});
 }
 async function boot(){
  try {
    api ||= await loadSupabase();
    state.demo=api.mode==='demo';
+   if(recovery.active){await checkRecoveryLink();return;}
    const previousAccount=accountVersion;
-   const user=await api.getUser();if(previousAccount!==accountVersion)return;
+   const user=await api.getUser();if(recovery.active||previousAccount!==accountVersion)return;
    setCurrentUser(user);
    if(!authSubscription&&api.onAuthChange)authSubscription=api.onAuthChange(user=>{
+     if(recovery.active)return;
      if(state.user?.id===user?.id)return;
      setCurrentUser(user);state.view=user?'loading':'auth';render();
      // Leave the synchronous Supabase auth callback before making API calls.
@@ -467,7 +512,7 @@ async function boot(){
    }
    const account=accountVersion;
    const profile=await api.getMyProfile();
-   if(account!==accountVersion)return;
+   if(recovery.active||account!==accountVersion)return;
    if(!profile){
      state.view='onboard';
      render();
@@ -475,7 +520,7 @@ async function boot(){
    }
    state.profile=profile;await loadPushSettings();
    await refreshFriends().catch(e=>console.warn('Could not refresh friend requests.',e));
-   if(account!==accountVersion)return;
+   if(recovery.active||account!==accountVersion)return;
    const pending=savedInvite();
    if(pending){
      try {
@@ -498,7 +543,7 @@ async function hydrate(posts){
  if(ids.length){const profiles=await api.getProfiles(ids);const map=new Map(profiles.map(p=>[p.id,p]));for(const p of posts) if(!p.author)p.author=map.get(p.author_id) || {display_name:'Friend'};}
  return posts;
 }
-async function home(){activityOpenVersion++;const account=accountVersion;const feed=await hydrate(await api.getFeed());if(account!==accountVersion)return;if(!pushSettingsLoaded)await loadPushSettings();if(account!==accountVersion)return;state.feed=feed;state.postReturn='feed';state.view='feed';render();await refreshActivity();if(account===accountVersion)await openNotification();}
+async function home(){if(recovery.active)return;activityOpenVersion++;const account=accountVersion;const feed=await hydrate(await api.getFeed());if(recovery.active||account!==accountVersion)return;if(!pushSettingsLoaded)await loadPushSettings();if(recovery.active||account!==accountVersion)return;state.feed=feed;state.postReturn='feed';state.view='feed';render();await refreshActivity();if(account===accountVersion)await openNotification();}
 async function openProfile(){state.profile=await api.getMyProfile();state.history=await hydrate(await api.getHistory(state.user.id));await loadPushSettings();state.view='profile';render();}
 async function openNotifications(){
  if(!state.user||!state.profile)return;
@@ -516,6 +561,7 @@ async function openFriends(){
  $('#friends-title')?.focus({preventScroll:true});
 }
 function brand(){return `<div class="brand">AziCe<span>?</span></div>`;}
+function headerBrand(){return `<div class="header-brand">${brand()}<span class="beta-badge">BETA v${APP_VERSION}</span></div>`;}
 function headerAvatar(){
  const p=state.profile;const path=p?.avatar_path;
  const src=path?(path.startsWith('data:')?path:(path.startsWith('avatar:')?path:`avatar:${path}`)):null;
@@ -523,7 +569,7 @@ function headerAvatar(){
 }
 function shell(content, tab='feed'){
  return `<div class="app-shell">
-  <header class="header">${brand()}<div class="header-actions ${state.view==='feed'?'feed-header-actions':''}">${state.view==='feed'?`<button type="button" class="friends-button" data-action="friends" aria-label="${state.friends.incoming.length?'Friends & Invites, pending incoming friend requests':'Friends & Invites'}">${friendsButtonContent()}</button><button type="button" class="activity-button" data-action="activity" aria-label="${state.activity.unread?'Activity, unread comments or reactions':'Activity'}">${activityButtonContent()}</button>`:''}${headerAvatar()}</div></header>
+  <header class="header">${headerBrand()}<div class="header-actions ${state.view==='feed'?'feed-header-actions':''}">${state.view==='feed'?`<button type="button" class="friends-button" data-action="friends" aria-label="${state.friends.incoming.length?'Friends & Invites, pending incoming friend requests':'Friends & Invites'}">${friendsButtonContent()}</button><button type="button" class="activity-button" data-action="activity" aria-label="${state.activity.unread?'Activity, unread comments or reactions':'Activity'}">${activityButtonContent()}</button>`:''}${headerAvatar()}</div></header>
   ${state.demo?'<div class="demo-banner">DEMO MODE · Only on this device · No real friends connected</div>':''}
   <main class="content">${content}</main>
   <nav class="bottom-nav" aria-label="Main navigation">
@@ -634,9 +680,40 @@ function friendsView(){
  <section class="friends-section"><div class="section-heading"><h2>Friends</h2><span>${f.friends.length}</span></div>
  ${f.friends.length?f.friends.map(p=>friendRow(p,`<button class="small-secondary" data-action="friend-profile" data-id="${html(p.id)}">View</button><button class="small-danger" data-action="unfriend" data-id="${html(p.id)}">Remove</button>`)).join(''):'<p class="muted small-text">Your friends will appear here.</p>'}</section></div>`,'profile');
 }
-function authView(){const signup=state.authSignUp;return `<main class="centered auth-screen">${brand()}<p class="tagline">Every day has a story.</p><div class="auth-panel"><h1>${signup?'Create your account':'Welcome back'}</h1><p>${signup?'Join the crew. Just be yourself.':'See what the crew is up to.'}</p><form id="auth-form"><label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label><label>Password<input name="password" type="password" minlength="6" autocomplete="${signup?'new-password':'current-password'}" required placeholder="At least 6 characters"></label><button class="primary" type="submit">${signup?'Sign Up':'Sign In'}</button></form><div class="or">or</div><button class="wide-outline" data-action="google">Continue with Google</button><p class="auth-switch">${signup?'Already have an account?':'New here?'} <button class="inline-link" data-action="toggle-auth">${signup?'Sign In':'Sign Up'}</button></p></div>${state.demo?'<div class="demo-banner auth-demo">Preview mode — Supabase is not configured. Explore the interface locally.</div><button class="secondary" data-action="demo-enter">Explore Demo</button>':''}</main>`;}
+function authView(){const signup=state.authSignUp;return `<main class="centered auth-screen">${brand()}<p class="tagline">Every day has a story.</p><div class="auth-panel"><h1>${signup?'Create your account':'Welcome back'}</h1><p>${signup?'Join the crew. Just be yourself.':'See what the crew is up to.'}</p><form id="auth-form"><label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label><label>Password<input name="password" type="password" minlength="6" autocomplete="${signup?'new-password':'current-password'}" required placeholder="At least 6 characters"></label><button class="primary" type="submit">${signup?'Sign Up':'Sign In'}</button></form>${signup?'':'<button class="text-button forgot-password" data-action="recovery-request">Forgot password?</button>'}<div class="or">or</div><button class="wide-outline" data-action="google">Continue with Google</button><p class="auth-switch">${signup?'Already have an account?':'New here?'} <button class="inline-link" data-action="toggle-auth">${signup?'Sign In':'Sign Up'}</button></p></div>${state.demo?'<div class="demo-banner auth-demo">Preview mode — Supabase is not configured. Explore the interface locally.</div><button class="secondary" data-action="demo-enter">Explore Demo</button>':''}</main>`;}
 function onboardView(){return `<main class="centered auth-screen">${brand()}<p class="tagline">One last thing...</p><div class="auth-panel"><h1>Set up your profile</h1><p>Your story, your identity.</p><form id="onboard-form"><label>Display Name<input name="display_name" maxlength="60" required placeholder="Alex"></label><label>Username<input name="username" pattern="[a-z0-9_]{3,24}" required maxlength="24" placeholder="alex_22" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label><label class="checkline"><input name="adult" type="checkbox" required> I confirm I am at least 18 years old.</label><button class="primary" type="submit">Let's Go →</button></form></div></main>`;}
 function editProfileView(){const p=state.profile;return shell(`${backBar('Edit Profile')}<form id="edit-profile" class="edit-form"><div class="profile-avatar-center">${avatar(p,'large')}<label class="gallery-label">Choose from Gallery<input type="file" accept="image/*" id="avatar-input" hidden></label></div><label>Display Name<input name="display_name" required maxlength="60" value="${html(p.display_name)}"></label><label>Username<input name="username" required pattern="[a-z0-9_]{3,24}" maxlength="24" value="${html(p.username)}" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label><label>Bio<textarea name="bio" maxlength="150" rows="3" placeholder="Tell your story...">${html(p.bio||'')}</textarea><small>Max. 150 characters</small></label><button class="primary" type="submit">Save Changes</button></form>`,'profile');}
+function passwordRecoveryView(){
+ const error=recovery.error?`<p class="recovery-feedback" role="alert">${html(recovery.error)}</p>`:'';
+ let content='';
+ if(recovery.stage==='checking')content='<h1>Checking recovery link…</h1><p class="muted" role="status">Please wait.</p>';
+ if(recovery.stage==='request')content=`<h1>Reset your password</h1><p>Enter your email to request a recovery link.</p>${error}<form id="reset-request-form"><label>Email<input name="email" type="email" autocomplete="email" maxlength="254" value="${html(recovery.email)}" required ${recovery.busy?'disabled':''}></label><button class="primary" ${recovery.busy?'disabled':''}>${recovery.busy?'Sending…':'Send reset link'}</button></form>`;
+ if(recovery.stage==='sent')content='<h1>Check your email</h1><p role="status">If an account exists for that email, you’ll receive a password reset link.</p><p class="muted small-text">Use the latest link in the browser where you requested it.</p><button class="text-button" data-action="recovery-request">Request another link</button>';
+ if(recovery.stage==='ready')content=`<h1>Choose a new password</h1><p>Use at least 8 characters.</p>${error}<form id="reset-password-form"><label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required ${recovery.busy?'disabled':''}></label><label>Confirm password<input name="confirm_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required ${recovery.busy?'disabled':''}></label><button class="primary" ${recovery.busy?'disabled':''}>${recovery.busy?'Updating…':'Update password'}</button></form>`;
+ if(recovery.stage==='invalid')content=`<h1>Recovery link unavailable</h1>${error}<button class="primary" data-action="recovery-request">Request a new link</button><button class="text-button" data-action="recovery-retry">Try Again</button>`;
+ if(recovery.stage==='success')content='<h1>Password updated!</h1><p role="status">You can now sign in with your new password.</p>';
+ return `<main class="centered auth-screen recovery-screen">${brand()}<p class="tagline">Every day has a story.</p><section class="auth-panel">${content}<button class="text-button recovery-back" data-action="recovery-exit" ${recovery.busy?'disabled':''}>${['request','sent'].includes(recovery.stage)?'Back to Sign In':'Return to app'}</button></section></main>`;
+}
+async function submitRecovery(form){
+ if(!recovery.active||recovery.busy)return;
+ const values=Object.fromEntries(new FormData(form));recovery.error='';
+ if(form.id==='reset-request-form'){
+  if(api.mode==='demo'){recovery.error='Password recovery is unavailable in preview mode.';render();return;}
+  recovery.email=String(values.email||'').trim();if(!recovery.email||!recovery.email.includes('@')){recovery.error='Enter a valid email address.';render();return;}
+  recovery.busy=true;render();
+  try{await api.requestPasswordReset(recovery.email);recovery.stage='sent';recovery.email='';}
+  catch(error){if(error.status===400||error.code==='user_not_found'){recovery.stage='sent';recovery.email='';}else recovery.error=error.status===429?'Please wait a minute before trying again.':'Could not send the reset request. Check your connection and try again.';}
+  finally{recovery.busy=false;render();}return;
+ }
+ if(form.id!=='reset-password-form'||recovery.stage!=='ready')return;
+ if(!recovery.target||recovery.expires<=Date.now()){recovery.stage='invalid';recovery.error='This recovery session has expired. Request a new link.';render();return;}
+ if(String(values.password||'').length<8||values.password.length>128){recovery.error='Use a password with 8–128 characters.';render();return;}
+ if(values.password!==values.confirm_password){recovery.error='Passwords do not match.';render();return;}
+ recovery.busy=true;render();
+ try{await api.updateRecoveredPassword(values.password,recovery.target);recovery.stage='success';sessionStorage.removeItem('azice_recovery_target');await api.endPasswordRecovery().catch(()=>{});for(const key of ['azice-password-recovery','azice-password-recovery-user'])sessionStorage.removeItem(key);recovery.target=null;}
+ catch(error){if(['recovery_invalid','session_not_found','otp_expired','bad_jwt','refresh_token_not_found'].includes(error.code)){recovery.stage='invalid';recovery.error='This recovery session has expired or changed. Request a new link.';}else recovery.error=error.code==='weak_password'?'This password does not meet the security requirements. Choose a stronger password.':error.code==='same_password'?'Choose a different password from your current password.':'Could not update your password. Check your connection and try again.';}
+ finally{recovery.busy=false;render();}
+}
 function newPostView(){const d=state.draft;
  let content='';
  if(d.step===0)content=`<h1>What's the story today?</h1><p class="muted">Choose one. No pressure either way.</p><div class="choice-grid"><button class="choice ${d.kind==='drank'?'chosen':''}" data-action="choose-kind" data-value="drank"><span>🍺</span>I Drank</button><button class="choice ${d.kind==='sober'?'chosen':''}" data-action="choose-kind" data-value="sober"><span>🧃</span>I Didn't Drink</button></div>`;
@@ -649,6 +726,7 @@ function cameraView(){return `<main class="camera-screen"><div class="camera-hea
 function inviteView(preview){return `<main class="centered auth-screen">${brand()}<div class="auth-panel"><h1>Friend Invitation</h1>${preview?`<p><b>${html(preview.display_name)}</b> invited you to connect on AziCe?.</p><p class="muted">@${html(preview.username)} · Posts remain private until accepted.</p><button class="primary" data-action="send-request">Send Friend Request</button>`:'<p>This invite link has expired or was revoked.</p>'}<button class="secondary" data-action="dismiss-invite">Go to Feed</button></div></main>`;}
 function installInfo(){return `<div class="modal-backdrop" data-action="close-install"><div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()"><h2>Install AziCe?</h2><p>On iPhone: open in Safari, tap Share, then <b>Add to Home Screen</b> and enable <b>Open as Web App</b> if offered.</p><p>On Android: open the browser menu and select <b>Install app</b> or <b>Add to Home screen</b>.</p><button class="primary" data-action="close-install">Got It</button></div></div>`;}
 function render(){
+ if(recovery.active){$('#app').innerHTML=passwordRecoveryView();return;}
  if(!['new','camera'].includes(state.view)){clearTimeout(postingTimer);postingTimer=null;}
  cleanDraftPhotoURLs();
  const root=$('#app');
@@ -736,7 +814,15 @@ async function decodeAvatar(file){
 }
 async function refreshPosts(){if(state.view==='post'){const version=accountVersion,post=await api.getPost(state.openedPost.id);if(version!==accountVersion)return;if(!post){showToast('This update is no longer available.');if(state.postReturn==='activity')await openActivity();else await home();return;}state.openedPost=(await hydrate([post]))[0];}else if(state.view==='feed')state.feed=await hydrate(await api.getFeed());else if(['profile','friendProfile','day'].includes(state.view))state.history=await hydrate(await api.getHistory(state.view==='friendProfile'?state.target.id:state.user.id));render();}
 async function handleAction(button){const a=button.dataset.action,id=button.dataset.id,val=button.dataset.value;
+ if(recovery.active&&(!a.startsWith('recovery-')||recovery.busy))return;
  switch(a){
+ case 'recovery-request':{
+  recovery.active=true;recovery.busy=true;
+  try{if(recovery.target&&api.endPasswordRecovery)await api.endPasswordRecovery();}finally{sessionStorage.removeItem('azice_recovery_target');recovery.target=null;recovery.expires=0;recovery.stage='request';recovery.error='';recovery.email='';recovery.busy=false;state.view='recovery';render();}
+  break;
+ }
+ case 'recovery-retry':await checkRecoveryLink();break;
+ case 'recovery-exit':await leaveRecovery();break;
  case 'activity':await openActivity();break;
  case 'activity-post':await openActivityPost(id);break;
  case 'push-enable':await enablePush();break;
@@ -848,10 +934,11 @@ document.addEventListener('invalid',event=>{if(isProfileUsername(event.target))e
 document.addEventListener('input',event=>{if(isProfileUsername(event.target))event.target.setCustomValidity('');if(event.target.id==='post-reason'){state.draft.reason=event.target.value.slice(0,300);const c=$('#reason-counter');if(c)c.textContent=`${state.draft.reason.length}/300`;}});
 document.addEventListener('change',async event=>{if(event.target.dataset?.pushCategory){const key=event.target.dataset.pushCategory;if(!PUSH_CATEGORIES[key])return;const version=accountVersion;try{const settings=await api.saveNotificationPreferences({[key]:event.target.checked});if(version===accountVersion){pushSettings=settings;showToast('Notification preferences updated.');}}catch{if(version===accountVersion){event.target.checked=!event.target.checked;showToast('Could not update notifications.');}}}else if(event.target.id==='avatar-input'&&event.target.files?.[0])try{await galleryAvatar(event.target.files[0]);}catch(e){showToast(e.message);}});
 document.addEventListener('submit',async event=>{
- const form=event.target;event.preventDefault();if(form.id==='add-username-form'){await addFriendByUsername(form);return;}const values=Object.fromEntries(new FormData(form));
+ const form=event.target;event.preventDefault();if(['reset-request-form','reset-password-form'].includes(form.id)){await submitRecovery(form);return;}if(recovery.active)return;if(form.id==='add-username-form'){await addFriendByUsername(form);return;}const values=Object.fromEntries(new FormData(form));
  try{
   if(form.id==='auth-form'){
    const res=state.authSignUp?await api.signUp(values.email,values.password):await api.signIn(values.email,values.password);
+   if(recovery.active)return;
    if(!res){showToast('Check your email for a confirmation link.');return;}
    setCurrentUser(res);const account=accountVersion;
    await refreshFriends().catch(e=>console.warn('Could not refresh friend requests.',e));
