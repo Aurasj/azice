@@ -42,8 +42,101 @@ export function createRecoveryStorage(shared,tab){return {
   setItem:(key,value)=>(key.endsWith('-code-verifier')?shared:tab).setItem(key,value),
   removeItem:key=>(key.endsWith('-code-verifier')?shared:tab).removeItem(key)
 };}
-export function createCloud(client,{recoveryClient=null,origin=null}={}) {
+export function createCloud(client,{recoveryClient=null,origin=null,postCleanupStorage=null}={}) {
   const run = async q => { const {data,error}=await q; if(error) throw error; return data; };
+  // Journal contains only owned draft IDs/paths, never images or tokens.
+  // Server-side draft/photo rows remain the durable recovery manifest as well.
+  const memoryJournal=new Map(),postOperations=new Set();
+  let postAccount=null,postAccountVersion=0;
+  client.auth?.onAuthStateChange?.((_event,session)=>{
+    const id=session?.user?.id||null;if(id!==postAccount){postAccount=id;postAccountVersion++;}
+  });
+  const journal=()=>postCleanupStorage||(typeof window==='undefined'?{
+    getItem:key=>memoryJournal.get(key)||null,setItem:(key,value)=>memoryJournal.set(key,value)
+  }:(globalThis.navigator?.locks?.request?globalThis.localStorage:globalThis.sessionStorage));
+  const journalKey=user=>'azice_post_cleanup_v1:'+user;
+  const readAttempts=user=>{
+    const rows=JSON.parse(journal().getItem(journalKey(user))||'[]');
+    if(!Array.isArray(rows)||rows.some(row=>!row?.id||!Array.isArray(row.paths)||row.paths.length>3||row.paths.some(path=>!path.startsWith(`${user}/${row.id}/`))))throw Error('Post recovery information is invalid. Please contact support.');
+    return rows;
+  };
+  const remember=(user,attempt,remove=false)=>{
+    const rows=readAttempts(user).filter(row=>row.id!==attempt.id);if(!remove)rows.push(attempt);
+    journal().setItem(journalKey(user),JSON.stringify(rows));
+  };
+  const pendingCleanup=cause=>Object.assign(Error('Photo cleanup is pending. Reopen New Post to retry before publishing again.'),{cleanupPending:true,cause});
+  const samePostAccount=async(user,version)=>{
+    const current=await me();
+    if(current.id!==user||version!==postAccountVersion)throw Error('Account changed. Please try again.');
+  };
+  const withPostOperation=async task=>{
+    const user=(await me()).id;
+    if(postOperations.has(user))throw Error('A post operation is already in progress.');
+    if(postAccount!==user){postAccount=user;postAccountVersion++;}
+    const version=postAccountVersion;postOperations.add(user);
+    try{
+      // Shared durable journals need cross-tab exclusion. Older browsers use
+      // per-tab persistence instead, so another tab cannot sweep a live upload.
+      if(globalThis.navigator?.locks?.request)return await globalThis.navigator.locks.request(
+        'azice:post-operation:'+user,{ifAvailable:true},lock=>{
+          if(!lock)throw Error('A post operation is already in progress in another tab.');
+          return task(user,version);
+        });
+      return await task(user,version);
+    }finally{postOperations.delete(user);}
+  };
+  const cleanAttempts=async(user,version,resumePublish=false)=>{
+    const published=[],retained=[];
+    for(const attempt of readAttempts(user)){
+      try{
+        await samePostAccount(user,version);
+        let post=await run(client.from('posts').select('id,status,post_photos(path)').eq('id',attempt.id).eq('author_id',user).maybeSingle());
+        await samePostAccount(user,version);
+        if(!post){
+          if(!attempt.paths.length||attempt.phase==='deleting'){remember(user,attempt,true);continue;}
+          throw Error('Draft unavailable; recovery information retained.');
+        }
+        if(post.status==='published'){published.push({id:attempt.id});remember(user,attempt,true);continue;}
+        if(post.status!=='draft')throw Error('Unexpected post state.');
+        if(attempt.phase==='publishing'){
+          if(!resumePublish)throw Error('Previous publication is unconfirmed. Retry Publish to resolve it.');
+          await samePostAccount(user,version);
+          const {error}=await client.rpc('publish_post',{p_post_id:attempt.id});
+          await samePostAccount(user,version);
+          post=await run(client.from('posts').select('id,status,post_photos(path)').eq('id',attempt.id).eq('author_id',user).maybeSingle());
+          await samePostAccount(user,version);
+          if(post?.status==='published'){published.push({id:attempt.id});remember(user,attempt,true);continue;}
+          if(error&&/^[0-9A-Z]{5}$/.test(error.code||'')){attempt.phase='cleanup';remember(user,attempt);}
+          else throw error||Error('Publication is still unconfirmed.');
+        }
+        // An interrupted/ambiguous upload may finish server-side after the
+        // connection ends. Keep its draft+metadata even after files disappear.
+        if(!Array.isArray(post.post_photos)||attempt.paths.some(path=>!post.post_photos.some(photo=>photo.path===path)))throw Error('Photo cleanup visibility could not be verified.');
+        // Recover reservations even if the journal write failed before upload.
+        attempt.paths=post.post_photos.map(photo=>photo.path);
+        if(attempt.phase==='uploading')attempt.retainDraft=true;
+        attempt.phase='cleanup';remember(user,attempt);
+        const prefix=`${user}/${attempt.id}`;
+        if(attempt.paths.length){
+          await samePostAccount(user,version);
+          const files=await run(client.storage.from('post-images').list(prefix,{limit:100}));
+          if(!Array.isArray(files))throw Error('Could not verify uploaded files.');
+          const paths=files.map(file=>prefix+'/'+file.name);
+          if(paths.some(path=>!attempt.paths.includes(path)))throw Error('Unexpected draft files; recovery information retained.');
+          if(paths.length){await samePostAccount(user,version);await run(client.storage.from('post-images').remove(paths));}
+          await samePostAccount(user,version);
+          const remaining=await run(client.storage.from('post-images').list(prefix,{limit:100}));
+          if(!Array.isArray(remaining)||remaining.length)throw Error('Uploaded files remain.');
+        }
+        if(attempt.retainDraft){retained.push(attempt.id);continue;}
+        await samePostAccount(user,version);attempt.phase='deleting';remember(user,attempt);
+        const deleted=await run(client.from('posts').delete().eq('id',attempt.id).eq('author_id',user).eq('status','draft').select('id'));
+        if(!Array.isArray(deleted)||!deleted.some(row=>row.id===attempt.id))throw Error('Draft deletion was not confirmed.');
+        remember(user,attempt,true);
+      }catch(error){throw pendingCleanup(error);}
+    }
+    return {published,retained};
+  };
   const commentRpc = async (name,commentId) => {
     try { return await run(client.rpc(name,{p_comment_id:commentId})); }
     catch(error) {
@@ -132,8 +225,9 @@ export function createCloud(client,{recoveryClient=null,origin=null}={}) {
       return data;
     },
     getMyProfile:async()=>{const u=await getUser();return u?run(client.from('profiles').select('*').eq('id',u.id).maybeSingle()):null;},
-    saveProfile:async fields=>{
+    saveProfile:async(fields,expectedUserId=null)=>{
       const u=await me();
+      if(expectedUserId&&u.id!==expectedUserId)throw Error('Account changed. Please try again.');
       // If fields contains is_18_plus_confirmed, it is onboarding insert
       if('is_18_plus_confirmed' in fields) {
         return run(client.from('profiles').insert({id:u.id,...fields}).select('*').single());
@@ -196,60 +290,60 @@ export function createCloud(client,{recoveryClient=null,origin=null}={}) {
       if(error) throw error;
       return URL.createObjectURL(data);
     },
-    createPost:async(kind,reason,files)=>{
-      const u=await me();
-      // Step 1: generate the draft ID locally so we never need RETURNING from the INSERT.
-      // This eliminates the .select().single() chain, removing the PostgREST RETURNING
-      // visibility check against the SELECT RLS policy as a potential failure point.
-      const draftId=crypto.randomUUID();
-      console.debug('[createPost] user id:', u.id, 'draftId:', draftId, 'kind:', kind, 'reason length:', reason?.length);
-      try {
-        // No .select()/.single() — INSERT only, status 204, no RETURNING evaluated.
-        await run(client.from('posts').insert({id:draftId,author_id:u.id,kind,reason,status:'draft'}));
-        console.debug('[createPost] Step 1 draft insert OK (no RETURNING)', draftId);
-      } catch(err) {
-        console.error('[createPost] Step 1 draft INSERT FAILED — code:', err.code, 'details:', err.details, 'hint:', err.hint, 'message:', err.message, 'full:', err);
-        throw err;
-      }
-      // Use the locally-generated ID for all subsequent operations.
-      const draft={id:draftId};
-      const uploadedPaths=[];
-      try {
-        // Step 2: upload photos and insert post_photos rows
-        for(let i=0;i<files.length;i++) {
-          const path=`${u.id}/${draft.id}/${i+1}-${crypto.randomUUID()}.jpg`;
-          console.debug('[createPost] Step 2 uploading photo', i+1, 'path:', path);
-          const {error}=await client.storage.from('post-images').upload(path,files[i],{contentType:'image/jpeg',upsert:false});
-          if(error){console.error('[createPost] Step 2 storage upload FAILED photo', i+1, error);throw error;}
-          uploadedPaths.push(path);
-          console.debug('[createPost] Step 2 inserting post_photos row slot', i+1);
-          await run(client.from('post_photos').insert({post_id:draft.id,slot:i+1,path}));
-          console.debug('[createPost] Step 2 post_photos insert OK slot', i+1);
+    retryPostCleanup:()=>withPostOperation((user,version)=>cleanAttempts(user,version)),
+    createPost:(kind,reason,files)=>withPostOperation(async(user,version)=>{
+      if(files.length>3)throw Error('You can add up to 3 photos.');
+      const previous=await cleanAttempts(user,version,true);
+      if(previous.published.length)return previous.published[0];
+      const attempt={id:crypto.randomUUID(),paths:[],phase:'draft'};
+      // Refuse to start if the recovery journal cannot be persisted.
+      remember(user,attempt);
+      try{
+        await samePostAccount(user,version);
+        // Keep the existing INSERT-only draft flow (no RETURNING).
+        await run(client.from('posts').insert({id:attempt.id,author_id:user,kind,reason,status:'draft'}));
+        for(let i=0;i<files.length;i++){
+          const path=`${user}/${attempt.id}/${i+1}-${crypto.randomUUID()}.jpg`;
+          await samePostAccount(user,version);
+          // Reserve SELECT-visible metadata BEFORE any bytes can be uploaded.
+          await run(client.from('post_photos').insert({post_id:attempt.id,slot:i+1,path}));
+          attempt.paths.push(path);attempt.phase='uploading';remember(user,attempt);
+          await samePostAccount(user,version);
+          try{
+            const {error}=await client.storage.from('post-images').upload(path,files[i],{contentType:'image/jpeg',upsert:false});
+            if(error){if(!(error.status>=400&&error.status<500))attempt.retainDraft=true;throw error;}
+          }catch(error){if(!(error.status>=400&&error.status<500))attempt.retainDraft=true;throw error;}
+          attempt.phase='draft';remember(user,attempt);
         }
-        // Step 3: publish via RPC
-        console.debug('[createPost] Step 3 calling publish_post RPC for draft', draft.id);
-        const {data:rpcData,error:rpcError}=await client.rpc('publish_post',{p_post_id:draft.id});
-        console.debug('[createPost] Step 3 RPC raw — error:', rpcError, 'data:', rpcData);
-        if(rpcError) throw rpcError;
-        console.debug('[createPost] Step 3 publish_post RPC OK');
-        return draft;
-      } catch(err) {
-        console.error('[createPost] caught error — code:', err.code, 'details:', err.details, 'hint:', err.hint, 'message:', err.message, 'full:', err);
-        if(uploadedPaths.length) {
-          try { await client.storage.from('post-images').remove(uploadedPaths); } catch {}
+        await samePostAccount(user,version);attempt.phase='publishing';remember(user,attempt);
+        const {error}=await client.rpc('publish_post',{p_post_id:attempt.id});
+        if(error)throw error;
+        // A local journal failure after confirmed publish must not invite a
+        // second publish: the retained record will reconcile to this same ID.
+        remember(user,attempt,true);
+        return {id:attempt.id};
+      }catch(error){
+        if(attempt.phase!=='publishing'||/^[0-9A-Z]{5}$/.test(error.code||''))attempt.phase='cleanup';
+        try{
+          remember(user,attempt);
+          const result=await cleanAttempts(user,version);
+          if(result.published.length)return result.published[0];
+          if(result.retained.includes(attempt.id))throw pendingCleanup(Error('Upload outcome unconfirmed; draft retained.'));
+        }catch(cleanupError){
+          throw Object.assign(pendingCleanup(cleanupError),{code:error.code,originalError:error});
         }
-        try { await client.from('posts').delete().eq('id',draft.id).eq('status','draft'); } catch {}
-        throw err;
+        throw error;
       }
-    },
-    comment:async(postId,body)=>{const u=await me();return run(client.from('comments').insert({post_id:postId,author_id:u.id,body}));},
+    }),
+    comment:async(postId,body,expectedUserId=null)=>{const u=await me();if(expectedUserId&&u.id!==expectedUserId)throw Error('Account changed. Please try again.');return run(client.from('comments').insert({post_id:postId,author_id:u.id,body}));},
     react:async(postId,emoji)=>{
       const u=await me();
       if(!emoji)return run(client.from('reactions').delete().eq('post_id',postId).eq('user_id',u.id));
       return run(client.from('reactions').upsert({post_id:postId,user_id:u.id,emoji},{onConflict:'post_id,user_id'}));
     },
-    saveAvatar:async file=>{
-      const u=await me();const path=`${u.id}/${crypto.randomUUID()}.jpg`;
+    saveAvatar:async(file,expectedUserId=null)=>{
+      const u=await me();if(expectedUserId&&u.id!==expectedUserId)throw Error('Account changed. Please try again.');
+      const path=`${u.id}/${crypto.randomUUID()}.jpg`;
       const {error}=await client.storage.from('avatars').upload(path,file,{contentType:'image/jpeg',upsert:false});
       if(error)throw error;
       try{await run(client.from('profiles').update({avatar_path:path}).eq('id',u.id));}

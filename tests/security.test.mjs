@@ -346,42 +346,43 @@ test('security audit: post photo access revoked immediately upon unfriending', (
   assert.equal(evaluateStorageAccess(userB, photoPath, friendships, posts, postPhotos), false);
 });
 
-test('security audit: cloud.js createPost draft cleanup removes uploaded files from storage on failure', async () => {
+test('security audit: failed uploads remove known files but retain uncertain drafts; definite publish rejection cleans completely', async () => {
   const { createCloud } = await import('../cloud.js');
 
   const removedPaths = [];
   const deletedPosts = [];
   let uploadFailOnSlot = 2; // Simulate upload failure on 2nd photo
   const draftIds = [];
+  const posts=new Map(),objects=new Set(),metadata=new Map();
 
   const mockClient = {
     auth: {
       getUser: async () => ({ data: { user: { id: 'test-user-id' } }, error: null })
     },
-    from: (table) => ({
-      insert: (record) => {
-        if (table === 'posts') draftIds.push(record.id);
-        return Promise.resolve({ data: record, error: null });
-      },
-      delete: () => ({
-        eq: (col1, val1) => ({
-          eq: (col2, val2) => {
-            deletedPosts.push({ col1, val1, col2, val2 });
-            return Promise.resolve({ error: null });
-          }
-        })
-      })
-    }),
+    from: (table) => {
+      let op='select',filters=[];
+      const query={
+        insert(record){if(table==='posts'){draftIds.push(record.id);posts.set(record.id,record);}else if(table==='post_photos'){const rows=metadata.get(record.post_id)||[];rows.push(record);metadata.set(record.post_id,rows);}return Promise.resolve({data:null});},
+        delete(){op='delete';return query;},eq(k,v){filters.push([k,v]);return query;},select(){return query;},maybeSingle(){return query;},
+        then(resolve,reject){const id=filters.find(([k])=>k==='id')?.[1];
+          if(op==='delete'){deletedPosts.push({id,filters});posts.delete(id);return Promise.resolve({data:[{id}]}).then(resolve,reject);}
+          const row=posts.get(id);return Promise.resolve({data:row?{...row,post_photos:metadata.get(id)||[]}:null}).then(resolve,reject);
+        }
+      };return query;
+    },
     storage: {
       from: (bucket) => ({
         upload: async (path) => {
           if (uploadFailOnSlot === 2 && path.includes('/2-')) {
             throw new Error('Simulated network disconnect during photo 2 upload');
           }
+          objects.add(path);
           return { data: { path }, error: null };
         },
+        list:async prefix=>({data:[...objects].filter(path=>path.startsWith(prefix+'/')).map(path=>({name:path.slice(prefix.length+1)}))}),
         remove: async (paths) => {
           removedPaths.push(...paths);
+          for(const path of paths)objects.delete(path);
           return { data: paths, error: null };
         }
       })
@@ -394,17 +395,16 @@ test('security audit: cloud.js createPost draft cleanup removes uploaded files f
   // Attempt to create post with 3 photos where 2nd photo fails
   await assert.rejects(
     () => cloud.createPost('drank', 'Test drinks', ['file1', 'file2', 'file3']),
-    /Simulated network disconnect during photo 2 upload/
+    error=>error.cleanupPending&&/Simulated network disconnect/.test(error.originalError.message)
   );
 
   // Verify that the 1st uploaded photo was cleaned up from storage
   assert.equal(removedPaths.length, 1);
   assert.ok(removedPaths[0].includes(`test-user-id/${draftIds[0]}/1-`));
 
-  // Verify that draft post row was also cleaned up
-  assert.equal(deletedPosts.length, 1);
-  assert.equal(deletedPosts[0].val1, draftIds[0]);
-  assert.equal(deletedPosts[0].val2, 'draft');
+  // Its unknown second upload may complete late: retain draft+metadata permission.
+  assert.equal(deletedPosts.length, 0);
+  assert.ok(posts.has(draftIds[0]));
 
   // Next test: upload succeeds for all photos, but publish_post RPC fails
   removedPaths.length = 0;
@@ -412,13 +412,13 @@ test('security audit: cloud.js createPost draft cleanup removes uploaded files f
   uploadFailOnSlot = 999; // Don't fail upload
 
   mockClient.rpc = async (method) => {
-    if (method === 'publish_post') throw new Error('RPC verification error');
+    if (method === 'publish_post') return {error:{code:'P0001',message:'RPC verification error'}};
     return { data: null, error: null };
   };
 
   await assert.rejects(
     () => cloud.createPost('drank', 'Test drinks', ['file1', 'file2']),
-    /RPC verification error/
+    error=>error.message==='RPC verification error'
   );
 
   // All 2 successfully uploaded photos should be cleaned up from storage
@@ -428,4 +428,6 @@ test('security audit: cloud.js createPost draft cleanup removes uploaded files f
 
   // Draft post row was deleted
   assert.equal(deletedPosts.length, 1);
+  assert.equal(deletedPosts[0].id,draftIds[1]);
+  assert.ok(deletedPosts[0].filters.some(([key,value])=>key==='status'&&value==='draft'));
 });

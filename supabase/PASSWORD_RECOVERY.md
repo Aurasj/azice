@@ -2,7 +2,7 @@
 
 ## Application behavior
 
-`app.js` defines the manually maintained `APP_VERSION` (`MAJOR.MINOR.FEATURE.PATCH`). The shared app header displays `BETA v0.1.0.2`. There is no browser-stored version or commit-based increment. The badge describes the JavaScript build actually running: an offline cached build can still show its older version until updated online through the existing service worker.
+`app.js` defines the manually maintained `APP_VERSION` (`MAJOR.MINOR.FEATURE.PATCH`). The shared app header displays `BETA v0.1.0.3`. There is no browser-stored version or commit-based increment. The badge describes the JavaScript build actually running: an offline cached build can still show its older version until updated online through the existing service worker.
 
 Sign In → Forgot password? requests a Supabase Auth recovery email. Successful requests and unknown-account responses use the same generic message. Request failures offer retry without exposing Auth/SMTP details. No permission or email request happens automatically.
 

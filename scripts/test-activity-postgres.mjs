@@ -26,6 +26,7 @@ try{
  insert into cron.job values('azice-push-dispatch','* * * * *','unchanged');`);
  await check('forward migration executes with existing discovery and push; retention job is separate (Cron stub)',async()=>{
   await db.exec(await read('supabase/migrations/20261023193752_in_app_activity.sql'));
+  await db.exec(await read('supabase/migrations/20261024174419_bound_activity_unread.sql'));
   if(!noCron){const jobs=await q('select * from cron.job order by jobname');assert.equal(jobs.length,2);assert.equal(jobs.find(j=>j.jobname==='azice-push-dispatch').command,'unchanged');assert.equal(jobs.find(j=>j.jobname==='azice-activity-retention').command,'select azice_activity.purge();');}
  });
  for(const [i,user] of [A,B,C].entries()){await q('insert into auth.users values($1)',[user]);await q('insert into public.profiles(id,display_name,username,is_18_plus_confirmed) values($1,$2,$3,true)',[user,'User '+i,'test_'+i]);}
@@ -70,12 +71,12 @@ try{
   await as(B,'delete from public.reactions where post_id=$1',[post]);await as(B,"insert into public.reactions values($1,$2,'👏',now())",[post,B]);
   assert.equal(await size(),2);assert.deepEqual((await q('select * from public.activity_notifications where event_key=$1',[key]))[0],before);
  });
- await check('list is latest 50, descending; unread flag includes older entries outside that window',async()=>{
+ await check('list is latest 50, descending; hidden older unread entries cannot keep the flag active',async()=>{
   for(let n=0;n<55;n++)await comment(B,post);
   await db.exec("update public.activity_notifications set created_at=now()-interval '1 day',read_at=null");
   const ids=await q("select event_key from public.activity_notifications where category='comment' order by event_key limit 50");
   for(const [n,row] of ids.entries())await q("update public.activity_notifications set created_at=now()+$2*interval '1 second',read_at=now() where event_key=$1",[row.event_key,n]);
-  const data=await activity(A);assert.equal(data.items.length,50);assert.equal(data.unread,true);assert.ok(data.items.every(x=>x.read_at));
+  const data=await activity(A);assert.equal(data.items.length,50);assert.equal(data.unread,false);assert.ok(data.items.every(x=>x.read_at));
   for(let n=1;n<data.items.length;n++)assert.ok(data.items[n-1].created_at>=data.items[n].created_at);
  });
  await check('30-day expiration hides immediately, cannot be marked, and purge removes physical rows',async()=>{

@@ -19,7 +19,7 @@
  *   - Storage upload failures trigger draft cleanup
  *   - post_photos INSERT failures trigger storage+draft cleanup
  *   - publish_post RPC failures trigger storage+draft cleanup
- *   - Cleanup is best-effort: a failing draft DELETE does not override the original error
+ *   - Cleanup failures are explicit and retain the original error for diagnosis
  *
  * No module import reassignment. All mocking is via createCloud(client) factory.
  */
@@ -58,6 +58,8 @@ function buildClient({
   deletedDraftIds = [],
 } = {}) {
   let photoInsertCalls = 0;
+  const posts=new Map(),objects=new Set(),photoRows=new Map();
+  if(publishRpcError&&!publishRpcError.code)publishRpcError.code='P0001';
 
   const buildQuery = (table) => {
     const q = {
@@ -75,19 +77,24 @@ function buildClient({
           if (q._op === 'insert') {
             insertPayloads.push({ ...q._payload });
             if (insertDraftError) return { data: null, error: insertDraftError };
+            posts.set(q._payload.id,{...q._payload});
             // No RETURNING — real Supabase returns null data with 204
             return { data: null, error: null };
           }
           if (q._op === 'delete') {
             const idFilter = (q._eq || []).find(e => e.col === 'id');
             if (idFilter) deletedDraftIds.push(idFilter.val);
-            return { data: null, error: null };
+            posts.delete(idFilter?.val);
+            return { data: [{id:idFilter?.val}], error: null };
           }
+          const row=posts.get((q._eq||[]).find(e=>e.col==='id')?.val);
+          return {data:row?{...row,post_photos:photoRows.get(row.id)||[]}:null,error:null};
         }
         if (table === 'post_photos') {
           if (q._op === 'insert') {
             photoInsertCalls++;
             if (insertPhotosError) return { data: null, error: insertPhotosError };
+            const rows=photoRows.get(q._payload.post_id)||[];rows.push(q._payload);photoRows.set(q._payload.post_id,rows);
             return { data: null, error: null };
           }
         }
@@ -103,11 +110,13 @@ function buildClient({
     storage: {
       from: (_bucket) => ({
         upload: async (path, _file, _opts) => {
-          if (storageUploadError) return { data: null, error: storageUploadError };
+          if (storageUploadError) return { data: null, error: {...storageUploadError,status:400} };
+          objects.add(path);
           return { data: { path }, error: null };
         },
+        list:async prefix=>({data:[...objects].filter(path=>path.startsWith(prefix+'/')).map(path=>({name:path.slice(prefix.length+1)})),error:null}),
         remove: async (paths) => {
-          for (const p of paths) removedPaths.push(p);
+          for (const p of paths) {removedPaths.push(p);objects.delete(p);}
           return { data: paths, error: null };
         },
       }),
@@ -287,7 +296,7 @@ test('post: storage upload failure triggers draft cleanup using the pre-generate
   assert.equal(deletedDraftIds[0], draftId, 'deleted ID must match the locally-generated draft UUID');
 });
 
-test('post: post_photos INSERT failure triggers storage and draft cleanup', async () => {
+test('post: post_photos INSERT failure prevents uploading the unregistered file and cleans the draft', async () => {
   const insertPayloads = [];
   const removedPaths = [];
   const deletedDraftIds = [];
@@ -305,11 +314,7 @@ test('post: post_photos INSERT failure triggers storage and draft cleanup', asyn
   const draftId = insertPayloads[0].id;
   assert.ok(isUUID(draftId));
 
-  assert.equal(removedPaths.length, 1, 'the one uploaded file must be removed');
-  assert.ok(
-    removedPaths[0].startsWith(`${USER.id}/${draftId}/`),
-    `removed path must use user id and draft UUID`
-  );
+  assert.equal(removedPaths.length, 0, 'no file is uploaded before its metadata is reserved');
   assert.equal(deletedDraftIds.length, 1, 'draft must be deleted');
   assert.equal(deletedDraftIds[0], draftId);
 });
@@ -358,7 +363,7 @@ test('post: RLS-style error from publish_post RPC propagates and triggers cleanu
   assert.equal(deletedDraftIds[0], draftId);
 });
 
-test('post: createPost cleanup is best-effort — draft DELETE failure does not override original error', async () => {
+test('post: draft DELETE failure reports pending recovery and retains the original error', async () => {
   const insertPayloads = [];
   const client = buildClient({
     publishRpcError: { message: 'Photo verification failed' },
@@ -386,8 +391,9 @@ test('post: createPost cleanup is best-effort — draft DELETE failure does not 
   await assert.rejects(
     () => api.createPost('sober', 'cleanup resilience test', []),
     err => {
-      assert.match(err.message, /Photo verification failed/,
-        'original error must propagate even if cleanup DELETE fails');
+      assert.equal(err.cleanupPending,true);
+      assert.match(err.originalError.message, /Photo verification failed/,
+        'original error must be retained when cleanup DELETE fails');
       return true;
     }
   );

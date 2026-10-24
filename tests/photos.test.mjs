@@ -40,7 +40,7 @@ function setup(){
  vm.runInContext(source+`\nglobalThis.app={state,setCurrentUser,canvasBlob,capture,startCamera,stopCamera,galleryAvatar,decodeAvatar,
   privatePhotoURL,clearPhotoCache,draftPhotoURL,cleanDraftPhotoURLs,openPhotoViewer,closePhotoViewer,photoCard,newPostView,editProfileView,handleAction,
   setApi:value=>{api=value;},getViewer:()=>photoViewer};`,context);
- const app=context.app,api={mode:'cloud',imageUrl:async path=>`blob:${path}`,saveAvatar:async file=>{uploads.push(file);return 'avatar:a/new.jpg';}};
+ const app=context.app,api={mode:'cloud',imageUrl:async path=>`blob:${path}`,getMyProfile:async()=>({id:'a',display_name:'Alex',username:'alex'}),saveAvatar:async file=>{uploads.push(file);return 'avatar:a/new.jpg';}};
  app.setApi(api);app.setCurrentUser({id:'a'});app.state.profile={id:'a',display_name:'Alex',username:'alex'};app.state.view='new';
  return {app,api,context,document,history,events,canvases,draws,created,revoked,dialogs,uploads,video,trigger,root,toast,
   setEncode:fn=>{encode=fn;},setContext:v=>{contextAvailable=v;},setBitmap:value=>{bitmap=value;},get bitmap(){return bitmap;}};
@@ -219,10 +219,10 @@ test('post upload sends the exact optimized JPEG once with unchanged private pat
   storage:{from(bucket){return {upload:async(path,file,options)=>{calls.push({bucket,path,file,options});return {};}};}},
   rpc:async(name,args)=>{calls.push({name,args});return {};}};
  const result=await createCloud(client).createPost('drank','Test',[blob]);
- assert.equal(calls[0].value.status,'draft');assert.equal(calls[1].bucket,'post-images');assert.equal(calls[1].file,blob);
- assert.match(calls[1].path,new RegExp(`^a/${result.id}/1-[^/]+\\.jpg$`));
- assert.deepEqual(calls[1].options,{contentType:'image/jpeg',upsert:false});
- assert.equal(calls[2].table,'post_photos');assert.equal(calls[2].value.path,calls[1].path);
+ assert.equal(calls[0].value.status,'draft');assert.equal(calls[2].bucket,'post-images');assert.equal(calls[2].file,blob);
+ assert.match(calls[2].path,new RegExp(`^a/${result.id}/1-[^/]+\\.jpg$`));
+ assert.deepEqual(calls[2].options,{contentType:'image/jpeg',upsert:false});
+ assert.equal(calls[1].table,'post_photos');assert.equal(calls[1].value.path,calls[2].path);
  assert.deepEqual(calls[3],{name:'publish_post',args:{p_post_id:result.id}});
 });
 

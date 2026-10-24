@@ -7,7 +7,7 @@ if (incomingInvite) sessionStorage.setItem('azice_pending_invite', incomingInvit
 const savedInvite = () => sessionStorage.getItem('azice_pending_invite');
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabasePublishableKey);
 // MAJOR.MINOR.FEATURE.PATCH — change intentionally for releases, never per commit.
-const APP_VERSION='0.1.0.2';
+const APP_VERSION='0.1.0.3';
 function parseRecoveryLink(search=location.search,hash=location.hash||''){
  const query=new URLSearchParams(search||''),fragment=new URLSearchParams(hash.replace(/^#/,''));
  const active=query.get('recovery')==='1'||query.get('type')==='recovery'||fragment.get('type')==='recovery';
@@ -239,7 +239,7 @@ async function privatePhotoURL(path){
  if(imageLoads.has(path))return imageLoads.get(path);
  const account=accountVersion, cacheVersion=photoCacheVersion;
  const loading=api.imageUrl(path).then(url=>{
-  if(account!==accountVersion||cacheVersion!==photoCacheVersion){revokePhotoURL(url);throw Error('Photo unavailable.');}
+  if(account!==accountVersion||cacheVersion!==photoCacheVersion||imageLoads.get(path)!==loading){revokePhotoURL(url);throw Error('Photo unavailable.');}
   state.cache.set(path,url);
   if(state.cache.size>32){const oldest=[...state.cache.keys()].find(key=>key!==photoViewer?.path);if(oldest){revokePhotoURL(state.cache.get(oldest));state.cache.delete(oldest);}}
   return url;
@@ -267,6 +267,19 @@ async function openPhotoViewer(path){
 }
 let commentCard=null, commentCardVersion=0;
 let accountVersion=0, friendRefreshVersion=0, activityRefreshVersion=0,activityOpenVersion=0,returnRefresh=null, authSubscription=null;
+let feedRequestVersion=0,feedRefresh=null,feedNeedsRefresh=false,returnRefreshAccount=0;
+const commentSubmissions=new Map();
+// Profile work is scoped to an account generation, request and originating screen.
+let profileRequestVersion=0,profileWrites=Promise.resolve();
+const PROFILE_NAVIGATION_ACTIONS=new Set(['feed','profile','friends','friend-toast','notifications','activity','activity-post','friend-profile','edit-profile','start-post','open-day','prev-month','next-month','sign-out','delete-account','recovery-request','google','toggle-auth']);
+function profileTask(){
+ const account=accountVersion,request=++profileRequestVersion,owner=state.user?.id,view=state.view;
+ return {account,owner,current:()=>Boolean(owner)&&account===accountVersion&&request===profileRequestVersion&&state.view===view&&!recovery.active};
+}
+function queueProfileWrite(task,write){
+ const pending=profileWrites.then(()=>task.current()?write():null);
+ profileWrites=pending.catch(()=>{});return pending;
+}
 let seenIncoming=null, installTimer=null, installNudgeDialog=null, installDismissedUntil=0;
 const INSTALL_REMINDER=30*DAY;
 function installed(){return Boolean(navigator.standalone||window.matchMedia?.('(display-mode: standalone)').matches);}
@@ -298,10 +311,12 @@ function setCurrentUser(user){
   clearTimeout(showToast.timer);const toast=$('#toast');if(toast)toast.hidden=true;
   closePhotoViewer();stopCamera();state.draft.files=[];cleanDraftPhotoURLs();clearPhotoCache();
   closeCommentCard();
-  accountVersion++;friendRefreshVersion++;
+  accountVersion++;friendRefreshVersion++;profileRequestVersion++;profileWrites=Promise.resolve();
+  feedRequestVersion++;feedRefresh=null;feedNeedsRefresh=false;state.feedError=false;
+  for(const submission of commentSubmissions.values())submission.dialog?.close();commentSubmissions.clear();
   activityRefreshVersion++;activityOpenVersion++;state.activity={items:[],unread:false,loading:false,error:null};state.postReturn='feed';
   state.friends={friends:[],incoming:[],outgoing:[]};state.friendsLoaded=false;state.inviteToken=null;
-  state.profile=null;state.feed=[];state.history=[];state.cache.clear();
+  state.profile=null;state.target=null;state.feed=[];state.history=[];state.cache.clear();
   state.openedPost=null;pushSettings=pushDefaults();pushBusy=false;usernameRequestBusy=false;
   clearTimeout(postingTimer);postingTimer=null;postingRefreshVersion++;state.dailyPosting=null;state.postingError=false;state.publishing=false;
  }
@@ -368,12 +383,17 @@ async function refreshFriends(){
 }
 function refreshOnReturn(){
  if(recovery.active)return;
- if(!api||document.visibilityState==='hidden'||returnRefresh)return returnRefresh;
+ if(document.visibilityState==='hidden'){if(state.user&&state.view==='feed')feedNeedsRefresh=true;return;}
+ if(!api)return;
+ if(returnRefresh&&returnRefreshAccount===accountVersion)return returnRefresh;
  const account=accountVersion;
- returnRefresh=(async()=>{
+ const navigation=profileRequestVersion,feedVersion=feedRequestVersion;returnRefreshAccount=account;
+ const refresh=(async()=>{
   const user=await api.getUser();
   if(account!==accountVersion)return;
   if(state.user?.id!==user?.id){setCurrentUser(user);state.view=user?'loading':'auth';render();if(user)await boot();return;}
+  if(user&&feedNeedsRefresh&&state.view==='feed'){feedNeedsRefresh=false;await refreshFeed();}
+  if(account!==accountVersion)return;
   if(!pushBusy)await syncPushAccount(user).catch(()=>{});
   if(account!==accountVersion)return;
   if(user&&!pushBusy&&(!pushSettingsLoaded||pushSettings.enabled&&pushSettings.timezone!==Intl.DateTimeFormat().resolvedOptions().timeZone))await loadPushSettings();
@@ -381,7 +401,16 @@ function refreshOnReturn(){
   if(user&&['new','camera'].includes(state.view))await refreshDailyPosting();if(account!==accountVersion)return;
   if(user)await refreshActivity();if(account!==accountVersion)return;
   if(await refreshFriends()&&['friends','notifications'].includes(state.view))render();
- })().catch(e=>console.warn('Could not refresh friend requests.',e)).finally(()=>{returnRefresh=null;});
+ })().catch(e=>{
+  if(account===accountVersion&&navigation===profileRequestVersion&&feedVersion===feedRequestVersion&&feedNeedsRefresh&&state.view==='feed'){
+   feedNeedsRefresh=false;failFeedRefresh();
+  }
+  console.warn('Could not refresh app.',e);
+ }).finally(()=>{
+  if(returnRefresh!==refresh)return;returnRefresh=null;
+  if(feedNeedsRefresh&&document.visibilityState!=='hidden'&&state.view==='feed')return refreshOnReturn();
+ });
+ returnRefresh=refresh;
  return returnRefresh;
 }
 const html = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -543,14 +572,99 @@ async function hydrate(posts){
  if(ids.length){const profiles=await api.getProfiles(ids);const map=new Map(profiles.map(p=>[p.id,p]));for(const p of posts) if(!p.author)p.author=map.get(p.author_id) || {display_name:'Friend'};}
  return posts;
 }
-async function home(){if(recovery.active)return;activityOpenVersion++;const account=accountVersion;const feed=await hydrate(await api.getFeed());if(recovery.active||account!==accountVersion)return;if(!pushSettingsLoaded)await loadPushSettings();if(recovery.active||account!==accountVersion)return;state.feed=feed;state.postReturn='feed';state.view='feed';render();await refreshActivity();if(account===accountVersion)await openNotification();}
-async function openProfile(){state.profile=await api.getMyProfile();state.history=await hydrate(await api.getHistory(state.user.id));await loadPushSettings();state.view='profile';render();}
+function feedPhotoPaths(posts){return new Set(posts.flatMap(post=>(post.post_photos||[]).map(photo=>photo.path)));}
+function pruneFeedPhotos(previous,next){
+ const keep=feedPhotoPaths(next),paths=feedPhotoPaths(previous),owners=new Set(next.map(post=>post.author_id));
+ const removedOwners=new Set(previous.filter(post=>post.author_id!==state.user?.id&&!owners.has(post.author_id)).map(post=>post.author_id));
+ for(const path of [...state.cache.keys(),...imageLoads.keys()])if([...removedOwners].some(owner=>path.startsWith(owner+'/')||path.startsWith('avatar:'+owner+'/')))paths.add(path);
+ for(const path of paths)if(!keep.has(path)){
+  if(photoViewer?.path===path)closePhotoViewer();
+  revokePhotoURL(state.cache.get(path));state.cache.delete(path);imageLoads.delete(path);
+ }
+ if(commentCard&&!next.some(post=>(post.comments||[]).some(comment=>comment.id===commentCard.commentId)))closeCommentCard();
+}
+function updateFeedView(previous){
+ const x=window.scrollX||0,y=window.scrollY||0,slot=$('#feed-posts');
+ if(!slot?.replaceChildren){render();window.scrollTo(x,y);return;}
+ const nodes=new Map([...slot.querySelectorAll('[data-post]')].map(node=>[node.dataset.post,node]));
+ const old=new Map(previous.map(post=>[post.id,post])),ids=new Set(state.feed.map(post=>post.id));
+ const anchor=[...nodes.values()].find(node=>ids.has(node.dataset.post)&&node.getBoundingClientRect().bottom>68);
+ const top=anchor?.getBoundingClientRect().top,focus=document.activeElement,scrollers=[];let nextFocus=focus,selection;
+ const changed=markup=>{const template=document.createElement('template');template.innerHTML=markup;return template.content;};
+ const children=state.feedError?[changed(feedFailureView())]:!state.feed.length?[changed(emptyFeed())]:state.feed.map(post=>{
+  const node=nodes.get(post.id);if(node&&JSON.stringify(old.get(post.id))===JSON.stringify(post))return node;
+  const fragment=changed(postCard(post)),input=node?.querySelector('input[name="body"]'),replacement=fragment.querySelector('input[name="body"]');
+  if(input&&replacement){replacement.value=input.value;if(input===focus){nextFocus=replacement;selection=[input.selectionStart,input.selectionEnd];}}
+  const scroller=node?.querySelector('.photo-scroller'),next=fragment.querySelector('.photo-scroller');
+  if(scroller&&next){if(JSON.stringify(old.get(post.id)?.post_photos)===JSON.stringify(post.post_photos))next.replaceWith(scroller);else scrollers.push([next,scroller.scrollLeft]);}
+  return fragment;
+ });
+ slot.replaceChildren(...children);loadImages();restoreCommentSubmissions();
+ for(const [scroller,left] of scrollers)scroller.scrollLeft=left;
+ if(nextFocus?.isConnected){nextFocus.focus({preventScroll:true});if(selection)nextFocus.setSelectionRange(...selection);}
+ window.scrollTo(x,anchor?.isConnected?y+anchor.getBoundingClientRect().top-top:y);
+}
+function failFeedRefresh(){
+ const previous=state.feed;state.feed=[];state.feedError=true;closePhotoViewer();closeCommentCard();clearPhotoCache();updateFeedView(previous);
+}
+function refreshFeed({navigate=false}={}){
+ const account=accountVersion,navigation=profileRequestVersion,view=state.view;
+ if(!navigate&&feedRefresh?.account===account&&feedRefresh.navigation===navigation&&feedRefresh.view===view)return feedRefresh.promise;
+ const request=++feedRequestVersion;
+ const current=()=>account===accountVersion&&request===feedRequestVersion&&navigation===profileRequestVersion&&state.view===view&&!recovery.active;
+ const record={account,navigation,view};
+ record.promise=(async()=>{
+  try{
+   const posts=await api.getFeed();if(!current())return false;
+   // Reapply the Feed window after suspension and again after asynchronous hydration.
+   const feed=await hydrate(posts.filter(post=>isActive(post)));if(!current())return false;
+   if(navigate&&!pushSettingsLoaded)await loadPushSettings();if(!current())return false;
+   const previous=state.feed,next=feed.filter(post=>isActive(post));pruneFeedPhotos(previous,next);
+   state.feed=next;state.feedError=false;
+   if(navigate){state.postReturn='feed';state.view='feed';render();}else updateFeedView(previous);
+   return true;
+  }catch{if(current()){if(navigate)state.view='feed';failFeedRefresh();}return false;}
+ })().finally(()=>{if(feedRefresh===record)feedRefresh=null;});
+ feedRefresh=record;return record.promise;
+}
+async function home(){if(recovery.active)return;profileRequestVersion++;activityOpenVersion++;const account=accountVersion,navigation=profileRequestVersion;if(!await refreshFeed({navigate:true}))return;await refreshActivity();if(account===accountVersion&&navigation===profileRequestVersion&&state.view==='feed')await openNotification();}
+async function openProfile(task=profileTask()){
+ try{
+  await profileWrites;if(!task.current())return;
+  const profile=await api.getMyProfile();if(!task.current())return;
+  if(!profile)throw Error('Profile unavailable');
+  const posts=await api.getHistory(task.owner);if(!task.current())return;
+  const history=await hydrate(posts);if(!task.current())return;
+  await loadPushSettings();if(!task.current())return;
+  state.profile=profile;state.history=history;state.view='profile';render();
+ }catch(error){if(task.current())throw error;}
+}
 async function openNotifications(){
  if(!state.user||!state.profile)return;
  const account=accountVersion;await loadPushSettings();if(account!==accountVersion)return;
  state.view='notifications';render();window.scrollTo(0,0);$('#notifications-title')?.focus({preventScroll:true});
 }
-async function openFriendProfile(id){const p=await api.getProfile(id);if(!p)throw Error('Profile unavailable');state.target=p;state.history=await hydrate(await api.getHistory(id));state.view='friendProfile';render();}
+async function openFriendProfile(id){
+ const task=profileTask();
+ try{
+  const profile=await api.getProfile(id);if(!task.current())return;if(!profile)throw Error('Profile unavailable');
+  const posts=await api.getHistory(id);if(!task.current())return;
+  const history=await hydrate(posts);if(!task.current())return;
+  state.target=profile;state.history=history;state.view='friendProfile';render();
+ }catch(error){if(task.current())throw error;}
+}
+async function saveOwnProfile(fields,onboarding=false){
+ const task=profileTask();let current=task.current;
+ try{
+  const profile=await queueProfileWrite(task,()=>api.saveProfile(fields,task.owner));if(!task.current())return;
+  state.profile=profile;
+  if(!onboarding){showToast('Profile updated!');await openProfile(task);return;}
+  const opening=home(),request=profileRequestVersion;
+  current=()=>task.account===accountVersion&&request===profileRequestVersion&&!recovery.active;await opening;
+  if(!current())return;const pending=savedInvite();
+  if(pending){const preview=await api.previewInvite(pending);if(!current())return;state.invitePreview=preview;state.view='invite';render();}
+ }catch(error){if(current())showToast(profileErrorMessage(error));}
+}
 async function openFriends(){
  if(!state.user)return;
  const account=accountVersion;
@@ -583,12 +697,64 @@ function initials(name){return html((name||'?').trim().slice(0,1).toUpperCase())
 function backBar(title, action='profile'){return `<div class="subheader"><button class="icon-btn" data-action="${action}" aria-label="Back">‹</button><h1>${html(title)}</h1></div>`;}
 function photoCard(photo,idx){const path=html(photo.path);return `<button type="button" class="photo-slide" data-action="view-photo" data-path="${path}" aria-label="Open full photo ${idx+1}"><span class="photo-loading" aria-hidden="true">📷</span><img data-private-photo="${path}" alt="Photo ${idx+1}" loading="lazy"></button>`;}
 function avatar(p,cls=''){const path=p?.avatar_path;const src=path?(path.startsWith('data:')?path:(path.startsWith('avatar:')?path:`avatar:${path}`)):null;return `<div class="avatar ${cls}">${src?`<img data-private-photo="${html(src)}" alt="${html(p?.display_name||'User')} avatar">`:initials(p?.display_name)}</div>`;}
+function commentPost(id){
+ if(state.view==='post')return state.openedPost?.id===id?state.openedPost:null;
+ if(state.view==='feed')return state.feed.find(post=>post.id===id);
+ if(['profile','friendProfile','day'].includes(state.view))return state.history.find(post=>post.id===id);
+ return null;
+}
+function pendingComment(id){const submission=commentSubmissions.get(id);return submission?.current()?submission:null;}
+function commentForms(submission){return [...new Set([submission.form,...document.querySelectorAll('form[data-form="comment"]')])].filter(form=>form.isConnected!==false&&form.dataset.post===submission.postId);}
+function setCommentBusy(submission,busy,cleanup=false){
+ const current=submission.current();
+ const forms=current?commentForms(submission):cleanup&&submission.account===accountVersion&&submission.form.isConnected?[submission.form]:[];
+ for(const form of forms){
+  const input=form.querySelector('input[name="body"]'),button=form.querySelector('button[type="submit"]');
+  if(input){input.readOnly=busy;if(busy)input.value=submission.draft;}
+  if(button){button.disabled=busy;button.textContent=busy?'…':'➤';button.setAttribute('aria-label',busy?(submission.sending?'Sending comment':'Confirming comment'):'Post comment');}
+  form.setAttribute('aria-busy',String(busy));
+ }
+}
+function restoreCommentSubmissions(){for(const submission of commentSubmissions.values()){if(!submission.current())submission.dialog?.close();else setCommentBusy(submission,true);}}
+async function refreshCommentPost(submission){
+ if(state.view==='feed')return refreshFeed();
+ const post=await api.getPost(submission.postId);if(!submission.current())return false;
+ const updated=post?(await hydrate([post]))[0]:null;if(!submission.current())return false;
+ if(state.view==='post'){
+  if(!updated){showToast('This update is no longer available.');if(state.postReturn==='activity')await openActivity();else await home();return false;}
+  state.openedPost=updated;
+ }else state.history=updated?state.history.map(row=>row.id===submission.postId?updated:row):state.history.filter(row=>row.id!==submission.postId);
+ render();return true;
+}
+async function submitComment(form){
+ const postId=form.dataset.post;if(!state.user||form.isConnected===false||pendingComment(postId))return;
+ const draft=String(new FormData(form).get('body')||'');if(!draft.trim())return;
+ const account=accountVersion,navigation=profileRequestVersion,view=state.view,owner=state.user.id;
+ const target=state.target?.id,date=state.selectedDate;
+ const submission={form,postId,draft,account,sending:false,sent:false,current:()=>account===accountVersion&&navigation===profileRequestVersion&&view===state.view&&
+  (view!=='friendProfile'||target===state.target?.id)&&(view!=='day'||date===state.selectedDate)&&Boolean(commentPost(postId))&&state.activeComments.has(postId)&&!recovery.active};
+ if(!submission.current())return;commentSubmissions.set(postId,submission);setCommentBusy(submission,true);
+ try{
+  const confirmation=confirmInApp('It cannot be edited later.',{title:'Post this comment?',action:'Post comment'});
+  submission.dialog=$('dialog.azice-confirm[open]');
+  if(!await confirmation||!submission.current())return;
+  if(!isActive(commentPost(postId)))throw Error('Comments are closed after 48 hours.');
+  submission.sending=true;setCommentBusy(submission,true);
+  await api.comment(postId,draft.trim(),owner);if(!submission.current())return;
+  submission.sent=true;
+  for(const current of commentForms(submission)){const input=current.querySelector('input[name="body"]');if(input?.value===draft)input.value='';}
+  submission.draft='';
+  const refreshed=await refreshCommentPost(submission);if(submission.current())showToast(refreshed?'Comment posted.':'Comment posted, but comments could not refresh. Reopen the post to refresh.');
+ }catch(error){if(submission.current())showToast(submission.sent?'Comment posted, but comments could not refresh. Reopen the post to refresh.':error.message||'Could not post comment. Please try again.');}
+ finally{if(commentSubmissions.get(postId)===submission){commentSubmissions.delete(postId);setCommentBusy(submission,false,true);}}
+}
 function postCard(p){
  const counts=Object.fromEntries(EMOJI.map(e=>[e,(p.reactions||[]).filter(r=>r.emoji===e).length]));
  const myEmoji=(p.reactions||[]).find(r=>r.user_id===state.user.id)?.emoji;
  const open=state.activeComments.has(p.id);const active=isActive(p);
  const ownPost=own(p);
  const rawPhotos=p.post_photos||[];
+ const submission=pendingComment(p.id),busy=Boolean(submission);
  return `<article class="post-card" data-post="${html(p.id)}">
    <div class="post-head">
      ${avatar(p.author,'small')}
@@ -605,7 +771,7 @@ function postCard(p){
    ${state.activeReactions===p.id&&active?`<div class="reaction-picker">${EMOJI.map(e=>`<button data-action="react" data-id="${html(p.id)}" data-emoji="${e}" aria-label="React ${e}" class="emoji-btn ${myEmoji===e?'active':''}">${e}</button>`).join('')}${myEmoji?`<button data-action="react" data-id="${html(p.id)}" data-emoji="" class="unreact">Remove</button>`:''}</div>`:''}
    ${open?`<section class="comments-area" aria-label="Comments">
      ${(p.comments||[]).length ? p.comments.map(c=>`<div class="comment"><button type="button" class="comment-author" data-action="comment-user" data-id="${html(c.id)}">${html(c.author_id===state.user.id?'You':c.author_name)}</button> ${html(c.body)}<small>${fmt(c.created_at)}</small></div>`).join(''):'<p class="muted small-text">No comments yet.</p>'}
-     ${active?`<form data-form="comment" data-post="${html(p.id)}" class="comment-form"><input name="body" maxlength="300" required placeholder="Write a comment..." aria-label="Write a comment"><button type="submit" aria-label="Post comment">➤</button></form>`:'<div class="muted small-text">Comments are closed after 48 hours.</div>'}
+     ${active?`<form data-form="comment" data-post="${html(p.id)}" class="comment-form" aria-busy="${busy}"><input name="body" maxlength="300" required placeholder="Write a comment..." aria-label="Write a comment" value="${html(submission?.draft||'')}" ${busy?'readonly':''}><button type="submit" aria-label="${busy?(submission.sending?'Sending comment':'Confirming comment'):'Post comment'}" ${busy?'disabled':''}>${busy?'…':'➤'}</button></form>`:'<div class="muted small-text">Comments are closed after 48 hours.</div>'}
    </section>`:''}
  </article>`;
 }
@@ -614,8 +780,9 @@ function feedInviteCard(){
  return state.user&&state.friendsLoaded?`<section class="feed-invite-card" aria-labelledby="feed-invite-title"><h2 id="feed-invite-title">${hasFriends?'The more, the merrier!':'Better with friends'}</h2><p>${hasFriends?'Got room for one more friend? Bring them in!':"Invite your friends and see what they're up to."}</p><button type="button" class="primary" data-action="friends">Invite Friends</button></section>`:'';
 }
 function emptyFeed(){return `<div class="empty-state"><div class="empty-art">👀</div><h2>Pretty quiet in here...</h2><p>The crew hasn't shown up yet.</p><button class="text-button" data-action="start-post">Or be the first to post →</button></div>`;}
+function feedFailureView(){return '<div class="empty-small" role="alert">Could not refresh Feed. Reconnect and try again.<br><button type="button" class="text-button" data-action="retry-feed">Try Again</button></div>';}
 function feedView(){return shell(`<div class="page-title"><h1>What's happening?</h1><span>Last 48 hours</span></div>
- ${state.feed.length?state.feed.map(postCard).join(''):emptyFeed()}<div id="feed-invite">${feedInviteCard()}</div>`,'feed');}
+ <div id="feed-posts">${state.feedError?feedFailureView():state.feed.length?state.feed.map(postCard).join(''):emptyFeed()}</div><div id="feed-invite">${feedInviteCard()}</div>`,'feed');}
 function activityView(){
  const a=state.activity;
  const content=a.loading?'<div class="activity-state" role="status"><p>Loading activity...</p></div>':a.error?`<div class="activity-state"><p role="alert">${html(a.error)}</p><button type="button" class="primary" data-action="activity">Try Again</button></div>`:!a.items.length?`<div class="activity-state">${activityBellIcon()}<h2>Your story is just getting started</h2><p>Comments and reactions to your posts will appear here.</p></div>`:`<div class="activity-list">${a.items.map(item=>{const name=item.actor?.display_name||'Someone',action=item.category==='comment'?'commented on your post.':'reacted to your post.';return `<button type="button" class="activity-row ${item.read_at?'':'is-unread'}" data-action="activity-post" data-id="${html(item.event_key)}" aria-label="${item.read_at?'':'Unread. '}${html(name+' '+action)}"><span class="activity-row-icon" aria-hidden="true">${item.category==='comment'?'◌':'♡'}</span><span class="activity-copy"><span><strong>${html(name)}</strong> ${action}</span><time datetime="${html(item.created_at)}">${fmt(item.created_at)}</time></span>${item.read_at?'':'<span class="activity-unread" aria-hidden="true"></span>'}</button>`;}).join('')}</div>`;
@@ -749,6 +916,7 @@ function render(){
  }
  if(state.installHelp)root.insertAdjacentHTML('beforeend',installInfo());
  loadImages();
+ restoreCommentSubmissions();
  scheduleInstall();
  schedulePushInvitation();
 }
@@ -761,6 +929,7 @@ function loadImages(){
  if(typeof IntersectionObserver!=='undefined'&&!photoObserver)photoObserver=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){photoObserver.unobserve(entry.target);load(entry.target);}},{rootMargin:'300px'});
  photoObserver?.disconnect();
  for(const img of document.querySelectorAll('[data-private-photo]')){
+  if(img.classList?.contains?.('loaded'))continue;
   if(img.loading==='lazy'&&photoObserver)photoObserver.observe(img);else load(img);
  }
 }
@@ -797,13 +966,21 @@ async function capture(){
 }
 async function galleryAvatar(file){
  if(!file?.type?.startsWith('image/'))throw Error('Choose an image.');
- const image=await decodeAvatar(file);let blob;
+ const task=profileTask();
  try{
-  const n=Math.min(image.width,image.height),x=(image.width-n)/2,y=(image.height-n)/2;
-  const c=document.createElement('canvas'),size=Math.min(512,n);c.width=size;c.height=size;const ctx=c.getContext('2d');if(!ctx)throw Error('Avatar processing is unavailable.');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.drawImage(image,x,y,n,n,0,0,size,size);
-  blob=await new Promise((ok,no)=>c.toBlob(b=>b?.type==='image/jpeg'?ok(b):no(Error('Avatar conversion failed')),'image/jpeg',.80));
- }finally{image.close?.();}
- const path=await api.saveAvatar(blob);state.profile.avatar_path=path;showToast('Profile photo updated.');render();
+  const image=await decodeAvatar(file);let blob;
+  try{
+   if(!task.current())return;
+   const n=Math.min(image.width,image.height),x=(image.width-n)/2,y=(image.height-n)/2;
+   const c=document.createElement('canvas'),size=Math.min(512,n);c.width=size;c.height=size;const ctx=c.getContext('2d');if(!ctx)throw Error('Avatar processing is unavailable.');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.drawImage(image,x,y,n,n,0,0,size,size);
+   blob=await new Promise((ok,no)=>c.toBlob(b=>b?.type==='image/jpeg'?ok(b):no(Error('Avatar conversion failed')),'image/jpeg',.80));
+  }finally{image.close?.();}
+  if(!task.current())return;
+  const path=await queueProfileWrite(task,()=>api.saveAvatar(blob,task.owner));if(!task.current())return;
+  // Include earlier serialized edits rather than merging an avatar into stale profile fields.
+  const profile=await api.getMyProfile();if(!task.current()||!profile)return;
+  state.profile={...profile,avatar_path:path};showToast('Profile photo updated.');render();
+ }catch(error){if(task.current())throw error;}
 }
 async function decodeAvatar(file){
  try{
@@ -812,9 +989,17 @@ async function decodeAvatar(file){
   try{await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});return image;}finally{URL.revokeObjectURL(url);}
  }catch{throw Error('Could not read this image. Please choose a supported image.');}
 }
-async function refreshPosts(){if(state.view==='post'){const version=accountVersion,post=await api.getPost(state.openedPost.id);if(version!==accountVersion)return;if(!post){showToast('This update is no longer available.');if(state.postReturn==='activity')await openActivity();else await home();return;}state.openedPost=(await hydrate([post]))[0];}else if(state.view==='feed')state.feed=await hydrate(await api.getFeed());else if(['profile','friendProfile','day'].includes(state.view))state.history=await hydrate(await api.getHistory(state.view==='friendProfile'?state.target.id:state.user.id));render();}
+async function refreshPosts(){
+ if(['profile','friendProfile','day'].includes(state.view)){
+  const task=profileTask(),id=state.view==='friendProfile'?state.target.id:task.owner;
+  try{const posts=await api.getHistory(id);if(!task.current())return;const history=await hydrate(posts);if(!task.current())return;state.history=history;render();}catch(error){if(task.current())throw error;}return;
+ }
+ if(state.view==='feed'){await refreshFeed();return;}
+ if(state.view==='post'){const version=accountVersion,post=await api.getPost(state.openedPost.id);if(version!==accountVersion)return;if(!post){showToast('This update is no longer available.');if(state.postReturn==='activity')await openActivity();else await home();return;}state.openedPost=(await hydrate([post]))[0];}render();
+}
 async function handleAction(button){const a=button.dataset.action,id=button.dataset.id,val=button.dataset.value;
  if(recovery.active&&(!a.startsWith('recovery-')||recovery.busy))return;
+ if(PROFILE_NAVIGATION_ACTIONS.has(a))profileRequestVersion++;
  switch(a){
  case 'recovery-request':{
   recovery.active=true;recovery.busy=true;
@@ -833,13 +1018,21 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
  case 'view-photo':await openPhotoViewer(button.dataset.path);break;
  case 'view-draft-photo':if(state.draft.files[Number(id)])await openPhotoViewer(draftPhotoURL(state.draft.files[Number(id)]));break;
  case 'feed': stopCamera();await home();break;
+ case 'retry-feed':if(state.view==='feed')await refreshFeed();break;
  case 'profile':{const fromNotifications=state.view==='notifications';stopCamera();await openProfile();if(fromNotifications)$('#notifications-entry')?.focus({preventScroll:true});break;}
  case 'notifications':await openNotifications();break;
  case 'friends':stopCamera();await openFriends();break;
  case 'comment-user':await openCommentAuthor(id);break;
  case 'friend-profile':stopCamera();await openFriendProfile(id);break;
  case 'retry-post-count':await refreshDailyPosting();break;
- case 'start-post':state.draft={kind:'drank',reason:'',files:[],step:0};state.dailyPosting=null;state.postingError=false;state.view='new';render();await refreshDailyPosting();break;
+ case 'start-post':{
+  const version=accountVersion;state.draft={kind:'drank',reason:'',files:[],step:0};state.dailyPosting=null;state.postingError=false;state.view='new';render();
+  try{const result=await api.retryPostCleanup?.();if(version!==accountVersion)break;
+   if(result?.published.length)showToast('Your previous post was published.');
+   else if(result?.retained.length)showToast('An interrupted upload draft is retained for recovery.');
+  }catch(error){if(version!==accountVersion)break;showToast(error.message||'Photo cleanup is pending. Please try again.');}
+  await refreshDailyPosting();break;
+ }
  case 'cancel-post':stopCamera();state.draft.files=[];await home();break;
  case 'choose-kind':state.draft.kind=val;render();break;
  case 'post-back':state.draft.step=Math.max(0,state.draft.step-1);render();break;
@@ -871,7 +1064,8 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
       // Failure: restore UI so user can retry with their photos and reason preserved
       button.disabled=false;button.textContent='Publish Post';
       // Do NOT clear d.files or d.reason — user keeps their work
-      if((err.code==='P0001'&&err.message==='DAILY_POST_LIMIT')||err.code==='40001'){await refreshDailyPosting();if(version!==accountVersion)return;showToast(err.code==='P0001'||dailyPostLimitReached()?DAILY_POST_LIMIT_MESSAGE:'Could not publish. Please try again.');}
+      if(err.cleanupPending){await refreshDailyPosting();if(version!==accountVersion)return;showToast(err.message);}
+      else if((err.code==='P0001'&&err.message==='DAILY_POST_LIMIT')||err.code==='40001'){await refreshDailyPosting();if(version!==accountVersion)return;showToast(err.code==='P0001'||dailyPostLimitReached()?DAILY_POST_LIMIT_MESSAGE:'Could not publish. Please try again.');}
       else showToast(err.message||'Failed to publish. Please try again.');
       console.error('[publish] error:', err);
     }finally{if(version===accountVersion){state.publishing=false;button.disabled=!state.dailyPosting||dailyPostLimitReached();button.textContent='Publish Post';updateDailyPostingUI();}}
@@ -934,7 +1128,7 @@ document.addEventListener('invalid',event=>{if(isProfileUsername(event.target))e
 document.addEventListener('input',event=>{if(isProfileUsername(event.target))event.target.setCustomValidity('');if(event.target.id==='post-reason'){state.draft.reason=event.target.value.slice(0,300);const c=$('#reason-counter');if(c)c.textContent=`${state.draft.reason.length}/300`;}});
 document.addEventListener('change',async event=>{if(event.target.dataset?.pushCategory){const key=event.target.dataset.pushCategory;if(!PUSH_CATEGORIES[key])return;const version=accountVersion;try{const settings=await api.saveNotificationPreferences({[key]:event.target.checked});if(version===accountVersion){pushSettings=settings;showToast('Notification preferences updated.');}}catch{if(version===accountVersion){event.target.checked=!event.target.checked;showToast('Could not update notifications.');}}}else if(event.target.id==='avatar-input'&&event.target.files?.[0])try{await galleryAvatar(event.target.files[0]);}catch(e){showToast(e.message);}});
 document.addEventListener('submit',async event=>{
- const form=event.target;event.preventDefault();if(['reset-request-form','reset-password-form'].includes(form.id)){await submitRecovery(form);return;}if(recovery.active)return;if(form.id==='add-username-form'){await addFriendByUsername(form);return;}const values=Object.fromEntries(new FormData(form));
+ const form=event.target;event.preventDefault();if(['reset-request-form','reset-password-form'].includes(form.id)){await submitRecovery(form);return;}if(recovery.active)return;if(form.id==='add-username-form'){await addFriendByUsername(form);return;}if(form.dataset?.form==='comment'){await submitComment(form);return;}const values=Object.fromEntries(new FormData(form));
  try{
   if(form.id==='auth-form'){
    const res=state.authSignUp?await api.signUp(values.email,values.password):await api.signIn(values.email,values.password);
@@ -952,24 +1146,20 @@ document.addEventListener('submit',async event=>{
    }else render();
   } else if(form.id==='onboard-form'){
    if(!values.adult)throw Error('You must be at least 18.');
-   state.profile=await api.saveProfile({display_name:values.display_name.trim(),username:validateUsername(values.username),is_18_plus_confirmed:true});await home();const pending=savedInvite();if(pending){state.invitePreview=await api.previewInvite(pending);state.view='invite';render();}
+   await saveOwnProfile({display_name:values.display_name.trim(),username:validateUsername(values.username),is_18_plus_confirmed:true},true);
   } else if(form.id==='edit-profile'){
-   state.profile=await api.saveProfile({display_name:values.display_name.trim(),username:validateUsername(values.username),bio:values.bio.trim()});showToast('Profile updated!');await openProfile();
-  } else if(form.dataset.form==='comment'){
-   if(!values.body?.trim())return;
-   if(!await confirmInApp('It cannot be edited later.', {title:'Post this comment?',action:'Post comment'}))return;
-   await api.comment(form.dataset.post,values.body.trim());await refreshPosts();showToast('Comment posted.');
+   await saveOwnProfile({display_name:values.display_name.trim(),username:validateUsername(values.username),bio:values.bio.trim()});
   }
  }catch(e){console.error(e);showToast(['onboard-form','edit-profile'].includes(form.id)?profileErrorMessage(e):(e.message||'Could not save.'));}
 });
 document.addEventListener('visibilitychange',refreshOnReturn);
 window.addEventListener('focus',refreshOnReturn);
-window.addEventListener('pageshow',event=>{if(event?.persisted&&state.view==='camera'&&!state.cameraStream)startCamera();return refreshOnReturn();});
+window.addEventListener('pageshow',event=>{if(event?.persisted&&state.view==='camera'&&!state.cameraStream)startCamera();if(event?.persisted&&state.view==='feed')feedNeedsRefresh=true;return refreshOnReturn();});
 window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installPrompt=event;scheduleInstall();});
 window.addEventListener('appinstalled',()=>{state.installPrompt=null;dismissInstall();installNudgeDialog?.close();});
 if('serviceWorker' in navigator&&['http:','https:'].includes(location.protocol))navigator.serviceWorker.register('/sw.js').catch(()=>{});
 window.addEventListener('popstate',()=>closePhotoViewer(false));
-window.addEventListener('pagehide',event=>{stopCamera();if(!event.persisted){closePhotoViewer(false);clearPhotoCache();for(const url of draftPhotoURLs.values())revokePhotoURL(url);draftPhotoURLs.clear();}});
+window.addEventListener('pagehide',event=>{if(state.view==='feed')feedNeedsRefresh=true;stopCamera();if(!event.persisted){closePhotoViewer(false);clearPhotoCache();for(const url of draftPhotoURLs.values())revokePhotoURL(url);draftPhotoURLs.clear();}});
 
 (async()=>{
  state.view='loading';render();await boot();

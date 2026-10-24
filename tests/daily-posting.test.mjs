@@ -52,3 +52,22 @@ test('counter adapter accepts no author ID',async()=>{
  const calls=[];const api=createCloud({rpc:async(name,args)=>{calls.push({name,args});return {data:value(1)};}});assert.equal((await api.getDailyPostingStatus()).count,1);
  assert.equal(calls[0].name,'get_daily_posting_status');assert.deepEqual(Object.keys(calls[0].args),['p_timezone']);
 });
+
+test('entering New Post retries failed cleanup even when the daily publishing cap is reached',async()=>{
+ const h=setup(3);let retries=0;h.api.retryPostCleanup=async()=>{retries++;return {published:[],retained:[]};};
+ await h.a.handleAction({dataset:{action:'start-post'}});
+ assert.equal(retries,1);assert.equal(h.a.state.dailyPosting.count,3);assert.equal(h.a.state.view,'new');assert.equal(h.publishes,0);
+});
+
+test('late cleanup completion cannot show another account a publication message or refresh its state',async()=>{
+ const h=setup();let resolve;h.api.retryPostCleanup=()=>new Promise(r=>{resolve=r;});
+ const pending=h.a.handleAction({dataset:{action:'start-post'}});h.a.setCurrentUser({id:'b'});
+ resolve({published:[{id:'a-private-post'}],retained:[]});await pending;
+ assert.notEqual(h.toast.textContent,'Your previous post was published.');assert.equal(h.a.state.dailyPosting,null);
+});
+
+test('cleanup failure reports recovery explicitly while preserving the captured draft and refreshing quota',async()=>{
+ const h=setup(2);await h.a.refreshDailyPosting();const file={};h.a.state.draft.files=[file];
+ h.api.createPost=async()=>{h.setStatus(value(3));throw Object.assign(Error('Photo cleanup is pending. Reopen New Post to retry before publishing again.'),{cleanupPending:true,code:'P0001'});};
+ await h.publish();assert.match(h.toast.textContent,/Photo cleanup is pending/);assert.equal(h.a.state.draft.files[0],file);assert.equal(h.a.state.dailyPosting.count,3);assert.equal(h.a.state.publishing,false);
+});

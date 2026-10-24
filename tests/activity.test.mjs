@@ -28,6 +28,21 @@ test('Feed-only native Activity bell has its own unread dot and uses existing tw
  assert.match(h.root.innerHTML,/data-action="feed" aria-label="Back"/);
 });
 
+test('all 50 visible events read clears the bell; a new visible event can be opened and cleared',async()=>{
+ const visible=Array.from({length:50},(_,i)=>({...entry('read:'+i,i%2?'reaction':'comment'),read_at:new Date().toISOString()}));
+ const h=setup(visible);await h.app.refreshActivity();assert.equal(h.app.state.activity.items.length,50);assert.equal(h.app.state.activity.unread,false);assert.doesNotMatch(h.bell.innerHTML,/activity-dot/);
+ h.setData([entry('comment:new'),...visible.slice(0,49)]);await h.app.openActivity();assert.equal(h.app.state.activity.unread,true);
+ await h.app.openActivityPost('comment:new');assert.equal(h.app.state.activity.unread,false);assert.doesNotMatch(h.bell.innerHTML,/activity-dot/);
+});
+
+test('a slower older Activity response cannot erase a newly refreshed unread event',async()=>{
+ const h=setup(),resolve=[];h.api.getActivity=()=>new Promise(r=>resolve.push(r));
+ const older=h.app.refreshActivity(),newer=h.app.refreshActivity();
+ resolve[1]({items:[entry('comment:new')],unread:true});await newer;
+ resolve[0]({items:[],unread:false});await older;
+ assert.equal(h.app.state.activity.items[0].event_key,'comment:new');assert.equal(h.app.state.activity.unread,true);assert.match(h.bell.innerHTML,/activity-dot/);
+});
+
 test('Activity loading, error, retry and empty states do not replace or break Feed',async()=>{
  const h=setup();h.app.render();const feed=h.root.innerHTML;h.api.getActivity=async()=>{throw Error('Offline');};
  await h.app.refreshActivity();assert.equal(h.root.innerHTML,feed);assert.equal(h.app.state.view,'feed');
