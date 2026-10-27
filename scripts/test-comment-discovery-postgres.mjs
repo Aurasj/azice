@@ -32,6 +32,9 @@ const blocked=async(owner,client)=>{
  throw Error('Expected a database lock wait, not timing-dependent success');
 };
 try{
+ const {rows:[environment]}=await admin.query("SELECT current_setting('cluster_name') cluster,current_setting('listen_addresses') listens,current_setting('server_version') version");
+ if(environment.cluster!=='azice_stabilization_disposable'||environment.listens!=='127.0.0.1')throw Error('Refusing a cluster without the disposable marker and loopback-only listener');
+ console.log('Native PostgreSQL '+environment.version+'; approved disposable loopback cluster only.');
  await admin.query(`DO $$BEGIN
   IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
   IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
@@ -50,6 +53,13 @@ try{
   GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO authenticated;`);
  await owner.query(schema.slice(schema.indexOf('create policy avatar_select'),schema.indexOf('create policy avatar_remove')));
  await owner.query(schema.slice(schema.indexOf('-- Access controls on functions')));
+ await check('missing post-image SELECT fixture rejects the migration without partial changes',async()=>{
+  await assert.rejects(owner.query(migration),/Unexpected Storage SELECT policy set/);await owner.query('ROLLBACK');
+  assert.equal((await owner.query("SELECT to_regnamespace('azice_private') AS schema")).rows[0].schema,null);
+ });
+ // Use the actual policy definition, including metadata/path and post-access
+ // checks. Never satisfy the migration prerequisite with USING(true).
+ await owner.query(schema.slice(schema.indexOf('create policy post_image_select'),schema.indexOf('create policy post_image_delete')));
  await check('pre-existing private schema aborts without changing its ACL',async()=>{
   await owner.query('CREATE SCHEMA azice_private;GRANT USAGE ON SCHEMA azice_private TO authenticated');
   await assert.rejects(owner.query(migration),/azice_private already exists/);await owner.query('ROLLBACK');
@@ -66,7 +76,7 @@ try{
   ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO azice_default_grantee;
   CREATE SCHEMA unrelated_acl;
   CREATE FUNCTION public.azice_unrelated_acl_sentinel() RETURNS integer LANGUAGE sql AS $$SELECT 1$$;`);
- await check('migration executes on PostgreSQL 15',async()=>{await owner.query(migration);});
+ await check('migration executes on native PostgreSQL',async()=>{await owner.query(migration);});
  await check('new ACLs/owners are exact and unrelated default grants survive',async()=>{
   const {rows:[r]}=await owner.query(`SELECT
    has_function_privilege('authenticated','public.pending_friend_request_profiles()','EXECUTE') AS pending_allowed,
@@ -85,6 +95,15 @@ try{
  // Reload only synthetic fixtures, committed for independent concurrent sessions.
  await owner.query(regression.slice(0,regression.indexOf('-- New RPCs'))+'\nCOMMIT;');
  const left=await connect(),right=await connect();
+ await check('post-image fixture permits readable friend photos but hides private, expired and draft targets',async()=>{
+  await owner.query(`INSERT INTO public.post_photos(post_id,slot,path)
+   SELECT id,1,author_id::text||'/'||id::text||'/fixture.jpg' FROM public.posts;
+   INSERT INTO storage.objects(bucket_id,name) SELECT 'post-images',path FROM public.post_photos;`);
+  await asUser(left,A);
+  const {rows}=await left.query("SELECT name FROM storage.objects WHERE bucket_id='post-images'");
+  assert.equal(rows.length,1);assert.equal(rows[0].name,`${B}/${POST}/fixture.jpg`);
+  await left.query('ROLLBACK');
+ });
  const reset=async()=>{
   await left.query('ROLLBACK');await right.query('ROLLBACK');
   await owner.query(`TRUNCATE public.friend_requests;

@@ -1,6 +1,13 @@
-# Daily posting cap — local review
+# Daily posting cap — existing release prerequisite
 
-New migration: `migrations/20261024112734_daily_posting_cap.sql`. Not applied remotely. Apply only this forward migration after review; do not edit/reapply existing migrations or `schema.sql`.
+`migrations/20261024112734_daily_posting_cap.sql` is in the owner-designated
+production source baseline. No separate exact-file SQL apply receipt is retained;
+Git presence is not proof of application. Before release verify the live cap/helper
+definitions read-only; do not automatically reapply. See [MIGRATION_STATUS.md](MIGRATION_STATUS.md).
+F02 then F06 are already applied for BETA v0.1.1.0; no SQL is pending for final
+frontend publication. The review/tests below are historical;
+native cap-concurrency results are recorded separately in NATIVE_POSTGRES_TESTS.md.
+Never edit applied files or replay schema.sql on an existing database.
 
 The cap is **three published posts per account per configured local calendar day**, shared by `drank` and `sober`. Drafts and historical posts outside that day do not count. Existing posts in the current day count immediately; accounts already over three are preserved and cannot publish again that day. The UI shows at most “3 of 3 today” for those legacy accounts. Feed/history query windows and historical data are unchanged.
 

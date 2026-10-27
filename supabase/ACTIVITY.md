@@ -1,4 +1,11 @@
-# Activity Center — local implementation, not deployed
+# Activity Center — deployed baseline and F06 correction
+
+The owner confirmed the original Activity migration was applied unchanged in
+production (see [MIGRATION_STATUS.md](MIGRATION_STATUS.md)). Do not reapply it.
+The initial setup procedure below is historical/fresh-environment guidance, not
+this release's production instructions. The separate F06 correction is now applied
+and verified, following F02; do not reapply either. Historical
+test counts/version references below describe their original verification runs.
 
 Activity contains only comments and initial reactions from other authenticated users on the recipient's own published posts. It is independent of Web Push consent, devices, notification preferences and delivery. No friend requests, new-post notifications or reminders are copied into this list. No source content, names, avatars or post reasons are stored in Activity.
 

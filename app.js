@@ -7,7 +7,7 @@ if (incomingInvite) sessionStorage.setItem('azice_pending_invite', incomingInvit
 const savedInvite = () => sessionStorage.getItem('azice_pending_invite');
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabasePublishableKey);
 // MAJOR.MINOR.FEATURE.PATCH — change intentionally for releases, never per commit.
-const APP_VERSION='0.1.0.3';
+const APP_VERSION='0.1.1.0';
 function parseRecoveryLink(search=location.search,hash=location.hash||''){
  const query=new URLSearchParams(search||''),fragment=new URLSearchParams(hash.replace(/^#/,''));
  const active=query.get('recovery')==='1'||query.get('type')==='recovery'||fragment.get('type')==='recovery';
@@ -510,7 +510,7 @@ async function openCommentAuthor(commentId){
 }
 async function loadSupabase(){
  if(!cloudEnabled) return createDemo();
- const src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+ const src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js';
  await new Promise((resolve,reject)=>{
    if(window.supabase?.createClient)return resolve();
    const s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=()=>reject(Error('Could not load Supabase. Check your connection.'));document.head.append(s);

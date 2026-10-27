@@ -1,9 +1,12 @@
-# Comment-author discovery: local hardening, NOT approved for deployment
+# Comment-author discovery — existing baseline and historical review
 
-The previous comment-discovery migration has NOT been deployed. Its existing file,
-`supabase/migrations/20261023012201_comment_author_discovery.sql`, is revised in place.
-Apply it only once after review/approval, against the existing AziCe? schema. Never
-rerun the original schema against an existing database. Nothing was applied remotely.
+Current release status is recorded in [MIGRATION_STATUS.md](MIGRATION_STATUS.md).
+Discovery is an existing production prerequisite in the owner's stabilization
+scope; its exact live definition/ledger was not queried during this preparation.
+Do not reapply it. The SQL file's historical UNDEPLOYED header and the original
+hardening/deployment discussion below describe its earlier review, not pending
+SQL for BETA v0.1.1.0. F02 then F06 are already applied and verified for this
+release; do not reapply. Applied files remain unchanged; never replay schema.sql.
 
 ## Updated SQL and frontend changes
 
@@ -103,7 +106,7 @@ default-privilege definitions, tables, and account-deletion grants are not chang
 frontend dialog tests, cloud transport mocks, demo behavior, and SQL source audits.
 They are distinct from PostgreSQL execution.
 
-**Actual PostgreSQL 15.18:** `scripts/test-comment-discovery-postgres.mjs` passed 14
+**Historical PostgreSQL 15.18 run:** `scripts/test-comment-discovery-postgres.mjs` passed 14
 integration checks. It executed the migration and SQL regression script, checked exact
 owners/default grants and namespace collisions, and used independent sessions to test
 both revocation orders for friendships, post visibility and comment deletion, duplicate
@@ -117,18 +120,40 @@ only into the OS temporary directory for these tests. The test database was crea
 removed by the runner. Its baseline fixture was initialized only in a new throwaway
 local database, never reapplied to an existing application database.
 
-To rerun, start a disposable local PostgreSQL server listening on 127.0.0.1:55439 with a
-local administrator named `azice_test_owner`. Install the `pg` driver outside the project,
-and point the runner at its entry file:
+**F07 correction, 2026-10-27:** the newer migration requires both `avatar_select`
+and `post_image_select`. The old runner only created the former, so native replay
+failed with `Unexpected Storage SELECT policy set: review avatar authorization`.
+The corrected fixture loads the exact post-image SELECT policy from `schema.sql`,
+including the bucket, matching `post_photos.path` and `can_view_post()` checks.
+It first proves the missing prerequisite fails atomically, then tests that the real
+policy permits the readable friend's photo but hides private, expired and draft
+targets. No production policy or migration is changed and no USING(true) substitute
+is used. The corrected runner passed all **16 native checks**.
+
+The additional `scripts/test-stabilization-native-postgres.mjs` passed **8 native
+groups** for F02/F06 migration replay, native RLS/roles, migration rollback, genuinely
+overlapping Activity snapshots, and last-slot publishing under READ COMMITTED and
+REPEATABLE READ. See [native setup/results](NATIVE_POSTGRES_TESTS.md) for exact commands,
+safety requirements and remaining Storage API limitations. This current verification
+supersedes earlier checkpoint reports that the native fixture/environment were blocked.
+
+To rerun, obtain approval before starting a server or installing anything. Use only
+an isolated local cluster listening on 127.0.0.1:55439, with administrator
+`azice_test_owner` and `cluster_name=azice_stabilization_disposable`. Both runners
+check the marker and loopback listener before creating roles or a throwaway database.
+Reuse an existing compatible `pg` driver outside the application and point at it:
 
 ```powershell
 $env:AZICE_TEST_PG_MODULE = 'C:/path/to/temporary/node_modules/pg/lib/index.js'
 node scripts/test-comment-discovery-postgres.mjs
+node scripts/test-stabilization-native-postgres.mjs
 ```
 
 The runner hardcodes localhost, creates a uniquely named new database, and drops it in
 cleanup. It cannot accept a hosted database URL. `AZICE_TEST_PG_PORT` can change the
-local port. It requires administrator privileges only on that disposable local server.
+local port. It requires administrator privileges only on that disposable local server;
+do not point it at an ordinary development database or a production tunnel. The local
+PostgreSQL server is started/stopped explicitly by the approved operator, not the runner.
 
 Alternatively, against a disposable LOCAL Supabase database with this migration already
 applied, run `supabase/tests/comment_discovery.sql` as its postgres owner. That script

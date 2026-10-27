@@ -2,6 +2,12 @@
 
 The initial Web Push backend and the 24/7 delivery migration are deployed. The operator confirmed that `20261023202526_remove_push_quiet_hours.sql` was applied successfully and that a real Android push for a new comment was received afterward. This is operator-reported production verification; Codex did not execute remote SQL or perform that device test.
 
+For BETA v0.1.1.0 use [MIGRATION_STATUS.md](MIGRATION_STATUS.md) and ../DEPLOY.md.
+The initial setup/earlier rollout sections below are historical; do not replay
+them or treat old pending-discovery wording as current migration status. F02/F06
+are already applied and verified; delete-account v7 is ACTIVE with its SDK pin.
+Do not repeat backend steps. Push functions, secrets, Vault and Cron are unchanged.
+
 ## Data flow and authorization
 
 1. Transactional triggers observe successful pending friend-request creation (both existing invitation and comment-discovery RPCs), draft → published transitions, comment inserts and initial reaction inserts. There are no network calls in these transactions and no client API that accepts push recipients or lock-screen text. Existing RLS/business logic is retained. The outbox is atomic with the source transaction.

@@ -1,8 +1,10 @@
 # F02: restrict the arbitrary-pair friendship helper
 
-Local forward-only migration: `migrations/20261024171206_restrict_friendship_helper.sql`.
-No frontend, old migration, Storage policy, Edge Function, scheduler, or version changes.
-Apply only after owner review. Never rerun `schema.sql` against an existing database.
+Forward-only migration: `migrations/20261024171206_restrict_friendship_helper.sql`.
+The owner applied it in production; final read-only release checks confirmed the
+effective permissions/profile guard. Do not reapply. See MIGRATION_STATUS.md.
+The original review below describes this SQL fix; it changes no frontend,
+old migration, Storage policy, Edge Function or scheduler. Never replay schema.sql.
 
 ## Root cause and disclosure boundary
 

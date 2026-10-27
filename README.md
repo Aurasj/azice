@@ -1,87 +1,84 @@
-# AziCe? — rapid phone-first PWA starter
+# AziCe? — mobile-first friends-only PWA
 
-**Status: functional LOCAL DEMO + Supabase integration draft. Not production-ready.**
+Production baseline: **BETA v0.1.0.2**, commit `1b0e899`.
+Prepared local release: **BETA v0.1.1.0**, branch `stabilization/beta-v0.1.1.0`.
+Preparation does not mean deployed or approved for unrestricted public use.
 
-AziCe? is a dark, English-language, friends-only social app with "I Drank" and "I Didn't Drink" posts. It is a lightweight, dependency-free PWA, chosen so the first UI runs immediately without a build tool. It can be opened in Google Antigravity and enhanced by Gemini. It has NO relationship to Beyuno's source, keys, data, or migrations.
+AziCe? is an existing static JavaScript PWA using Supabase Auth/Database/private
+Storage and Netlify at https://azice.aagameri.tech. Feed, Friends & Invites,
+private profiles/calendar, Activity and optional Web Push already exist. Post
+photos remain camera-only (maximum three); the shared publishing limit is three
+posts per configured local calendar day. Friends are reached from Feed, with
+invitation links, exact-username requests and authorized comment-author discovery.
 
-## 1. Run it now — no API keys needed
+## Local development
 
-Open this folder in Antigravity, then in its terminal run:
+Use Node.js 24 (local verification: 24.22.1):
 
-```bash
+```sh
 node server.mjs
 ```
 
-Or, if Python is preferred:
+Open http://localhost:5173. This is a development source server, not a production
+publish configuration. **Current config.js contains public production connection
+settings: loading the browser app may contact production.** Do not use it for
+destructive tests. Prefer mock-based tests or a separately approved disposable
+configuration. Cloud mode is enabled when the public URL/key are present; the
+labeled demo is used only when they are absent. Do not change production config
+merely to run tests.
 
-```bash
-python -m http.server 5173
-```
-Visit **http://localhost:5173**. Because `config.js` has no Supabase credentials, it automatically runs a **clearly labeled local demo**, with sample posts and friends, local storage, profile, 48-hour feed, reactions, comments, a 4-step posting flow, phone camera capture, a calendar, and English UI.
+Never put service-role keys, private VAPID keys, SMTP credentials or access tokens
+in frontend files. Publishable/anon keys and the public VAPID key are intentionally
+browser-visible. The browser SDK is pinned to **2.118.0**; see
+[SDK_VERSIONS.md](supabase/SDK_VERSIONS.md) for compatibility and caching limits.
 
-The demo is **not networked**: invite links are examples and do not create real friend connections. It is for reviewing interaction, not actual friend testing. Camera capture requires a real camera and secure context (`localhost` or HTTPS).
+## Build and checks
 
-## 2. Connect REAL accounts, photos, friends, and comments
-
-1. Create a **NEW Supabase project**, dedicated to AziCe?. Never reuse Beyuno's project.
-2. In Supabase **SQL Editor**, execute `supabase/schema.sql` **once** on the empty new project. Before public use, review the RLS policies and access functions with Gemini/security tests.
-3. In **Authentication**, configure email confirmation and optionally Google OAuth. Configure both the website URL (eventually `https://azice.aagameri.tech`) and authorized redirect URLs for local development and deployment.
-4. Edit `config.js` using only values from your new Supabase project:
-
-```js
-window.AZICE_CONFIG = {
-  supabaseUrl: 'https://YOUR_PROJECT.supabase.co',
-  supabasePublishableKey: 'YOUR_PUBLIC_PUBLISHABLE_KEY'
-};
-```
-
-**Never paste the `service_role`, secret, or other privileged keys into a browser app.**
-
-5. Reload the PWA. It will switch automatically from local demo to Supabase-backed mode. After email/Google authentication, complete onboarding, then use the personal invite link under **Profile → Friends & Invites**. Use two distinct user accounts to check privacy and social interactions.
-6. Test on a real Android and iPhone via **HTTPS** (camera support/permissions may differ). Ensure the Google OAuth redirect URLs include the deployed domain.
-
-The Supabase SDK is loaded from jsDelivr in online mode. An offline/mobile-first polish pass should vendor or bundle dependencies and add a repeatable build/test toolchain before wider release.
-
-## 3. What is implemented in this starter
-
-- English-only UI, Dark Modern with warm orange accent, 2-tab navigation + plus button.
-- PWA manifest, icons, service worker caching only public shell (not private posts/photos).
-- Google/email auth interface and profile onboarding with 18+ self-attestation (Supabase mode).
-- Profile display name, username, 150-character bio, gallery-only avatar upload.
-- Personal regenerable invite token, friend requests, accept/decline/cancel and unfriend (Supabase mode).
-- Two post types, **up to 3 photos taken in the built-in camera** (no gallery input for posts), reason mandatory (up to 300 characters), 4-step preview and final confirmation.
-- Home feed: own + friends' posts from the last 48 hours (newest first).
-- A single emoji reaction per user/post, changeable/removable; flat, 300-character comments. Both close 48 hours after publication.
-- Owner's monthly calendar with orange and teal markers, separate day view; friends' profiles show only the last 30 days of posts read-only after 48 hours.
-- Posts and comments cannot ordinarily be edited/deleted from the UI; no report UI, no notifications, no friend search.
-- Private Supabase Storage buckets and initial RLS policies for friend-scoped content.
-
-## 4. NOT done or verified — mandatory before public release
-
-- Real Supabase end-to-end run with two accounts; database schema **was not applied or tested against a live Supabase project** in this environment.
-- Proper self-service **account deletion/data erasure**, an owner privacy-removal route, and a minimal abuse/safety contact or escalation path. These are important even if the first UI has no Report button.
-- Camera testing on Android Chrome and iOS Safari/PWA, Google OAuth setup, email confirmation, deployment and DNS.
-- Security review: RLS adversarial tests (post access before friendship / after unfriend / 30-day expiry; storage image read and share; friend request RPC; spoofed fields; race conditions), rate limits, and file lifecycle/cleanup for orphan drafts / superseded avatars.
-- Accessibility pass, image loading optimization, profile avatar cropping controls, all historical posts pagination, production tests, privacy policy, and operational backup/recovery.
-
-**Do not expose this as an unrestricted public service before completing the safeguards above.** Private beta UI review is fine with demo data; friend testing requires separate Supabase setup and safety controls.
-
-## 5. Local checks
-
-```bash
+```sh
+node --test tests/*.test.mjs
 node --check app.js
 node --check cloud.js
-node --check demo.js
-node --check server.mjs
-node --test tests/demo.test.mjs tests/server.test.mjs tests/security.test.mjs
+node scripts/build.mjs
+git diff --check
 ```
 
-The provided unit checks validate demo posting, feed, emoji behavior, comments, and friend removal. They do not replace live service tests.
+The build is static packaging, not a bundler/minifier. It validates public config
+and recreates **dist/** from an explicit allowlist, including **push-sw.js**.
+SQL, Edge source, tests, docs, development tooling and original logo/master are
+excluded. Never publish the repository root or commit generated dist/.
 
-## 6. Deploy later
+Optional real-SDK smoke tests need the hash-verified ignored artifact documented
+in [SDK_VERSIONS.md](supabase/SDK_VERSIONS.md); otherwise four tests explicitly skip.
+PostgreSQL/PGlite/native prerequisites and evidence boundaries are documented in
+[NATIVE_POSTGRES_TESTS.md](supabase/NATIVE_POSTGRES_TESTS.md). Mock tests and SQL
+metadata fixtures are not hosted Auth/Storage or physical Android/iPhone tests.
+The standard JavaScript suite and build need no application package installation.
 
-Create a **separate Netlify site** pointing at this folder/repository, using `netlify.toml`; no build command, publish directory `.`. Configure **`azice.aagameri.tech`** as the custom domain and enable HTTPS. Do not touch `www.aagameri.tech`, `/public/study`, `/public/pacanele`, or `beyuno.aagameri.tech`. Update the Supabase Auth Site URL and OAuth allowed redirects accordingly.
+## Deployment and migration status
 
-## 7. Gemini continuation
+Existing [netlify.toml](netlify.toml) sets build command
+**node scripts/build.mjs** and publish directory **dist**. Use the existing
+Git-connected main workflow only after approval; no new site or DNS setup.
 
-Paste the instructions in `GEMINI_NEXT_STEP.md` into Antigravity's Gemini agent while this project folder is open.
+Read [DEPLOY.md](DEPLOY.md) and [MIGRATION_STATUS.md](supabase/MIGRATION_STATUS.md).
+Never rerun schema.sql on production, bulk-apply repository migrations, invent
+migration-history rows or repair the ledger without separate review.
+The release's **F02 then F06** changes are already applied and verified.
+**delete-account v7** is ACTIVE with the SDK pin. Do not repeat those backend
+steps during final frontend publication.
+
+## Remaining beta limitations
+
+F01–F07 and R02 are implemented locally. **R03 remains an unresolved account-deletion
+concurrency risk**: native SQL/mock tests expose authorization/timing gaps, but
+surviving physical Storage objects have **not** been verified. Real R03/F03 Storage
+integration was blocked; the owner has stopped further R03 integration work for
+this beta. See [ACCOUNT_DELETION_R03.md](supabase/ACCOUNT_DELETION_R03.md) and
+[R03_LOCAL_INTEGRATION_ATTEMPT.md](supabase/R03_LOCAL_INTEGRATION_ATTEMPT.md).
+This is a recorded risk, not a fix or complete-erasure guarantee. Native Deno and
+real Storage failure cleanup remain unverified. The owner explicitly accepted
+R03's unresolved risk for this beta; acceptance does not establish complete erasure.
+
+Safety & Privacy: [aagameriaa@gmail.com](mailto:aagameriaa@gmail.com).
+Auth sender/SMTP configuration is separate; see
+[PASSWORD_RECOVERY.md](supabase/PASSWORD_RECOVERY.md).
