@@ -1,0 +1,19 @@
+{
+  "name": "azice",
+  "private": true,
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "scripts": {
+    "dev": "node server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check-syntax.mjs && node scripts/check-push-syntax.mjs && node scripts/check-config.mjs",
+    "test:sql": "node scripts/test-sql.mjs",
+    "build": "node scripts/build.mjs",
+    "build:production": "node scripts/build.mjs --production",
+    "ci:offline": "npm test && npm run check && npm run test:sql && npm run build && node scripts/check-demo-build.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.11",
+    "typescript": "5.9.3"
+  }
+}

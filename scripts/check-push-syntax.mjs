@@ -1,7 +1,7 @@
-// Optional syntax transpilation using an ignored temporary TypeScript compiler.
-import ts from '../supabase/.temp/push-tests/node_modules/typescript/lib/typescript.js';
+// Syntax transpilation using the locked development-only TypeScript compiler.
+import ts from 'typescript';
 import fs from 'node:fs';
-const files=['supabase/functions/push-subscriptions/index.ts','supabase/functions/push-dispatch/index.ts'];
+const files=['supabase/functions/delete-account/index.ts','supabase/functions/push-subscriptions/index.ts','supabase/functions/push-dispatch/index.ts'];
 for(const file of files){
  const source=fs.readFileSync(file,'utf8'),result=ts.transpileModule(source,{fileName:file,reportDiagnostics:true,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}});
  const errors=result.diagnostics?.filter(d=>d.category===ts.DiagnosticCategory.Error)||[];

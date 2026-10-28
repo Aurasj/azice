@@ -1,0 +1,23 @@
+name: Focused improvement
+description: Propose a small improvement consistent with the existing app.
+title: "[Idea]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Code is MIT-licensed; official branding/artwork is excluded. See BRANDING.md for forks and artwork contributions."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Proposed change and scope
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and privacy/accessibility considerations

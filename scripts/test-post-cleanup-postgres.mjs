@@ -1,5 +1,5 @@
 // PostgreSQL/RLS regression only. Storage HTTP and physical blobs are not simulated here.
-import {PGlite} from '../supabase/.temp/push-tests/node_modules/@electric-sql/pglite/dist/index.js';
+import {PGlite} from '@electric-sql/pglite';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const db=new PGlite(),read=path=>fs.readFile(new URL('../'+path,import.meta.url),'utf8');

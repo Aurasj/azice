@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {contributorConfig,configScript} from './scripts/config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +26,18 @@ const server = http.createServer((req, res) => {
   const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   let pathname = decodeURIComponent(reqUrl.pathname);
   if (pathname === '/' || pathname === '') pathname = '/index.html';
+
+  if(pathname==='/config.js'){
+    try{
+      const config=contributorConfig(__dirname);
+      res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Cache-Control':'no-store'});
+      res.end(configScript(config));
+    }catch{
+      res.writeHead(500,{'Content-Type':'text/plain','Cache-Control':'no-store'});
+      res.end('Invalid local configuration. See CONTRIBUTING.md.');
+    }
+    return;
+  }
 
   const safePath = path.normalize(path.join(__dirname, pathname));
   if (!safePath.startsWith(__dirname)) {

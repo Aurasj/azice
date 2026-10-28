@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security policy and private reporting
+    url: https://github.com/Aurasj/azice/blob/main/SECURITY.md
+    about: Read the policy before reporting vulnerabilities; do not disclose exploits in public issues.

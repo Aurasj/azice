@@ -1,84 +1,126 @@
-# AziCe? — mobile-first friends-only PWA
+# AziCe? — a mobile-first, friends-only PWA
 
-Production baseline: **BETA v0.1.0.2**, commit `1b0e899`.
-Prepared local release: **BETA v0.1.1.0**, branch `stabilization/beta-v0.1.1.0`.
-Preparation does not mean deployed or approved for unrestricted public use.
+**BETA v0.1.1.0** · [Live beta](https://azice.aagameri.tech) ·
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
-AziCe? is an existing static JavaScript PWA using Supabase Auth/Database/private
-Storage and Netlify at https://azice.aagameri.tech. Feed, Friends & Invites,
-private profiles/calendar, Activity and optional Web Push already exist. Post
-photos remain camera-only (maximum three); the shared publishing limit is three
-posts per configured local calendar day. Friends are reached from Feed, with
-invitation links, exact-username requests and authorized comment-author discovery.
+AziCe? lets adults share small daily updates with friends: “I Drank” or
+“I Didn't Drink,” a reason and optional camera photos. It explores private social
+sharing without streaks, rankings or pressure to consume alcohol.
 
-## Local development
+The deployed link is the real beta service, **not a testing sandbox**. Use the
+local demo below to inspect the app without production accounts or backend access.
+Application source code and documentation are [MIT-licensed](LICENSE). The official
+name, logo, mascot and brand identity are reserved; see [BRANDING.md](BRANDING.md).
+Repository visibility still requires owner approval.
 
-Use Node.js 24 (local verification: 24.22.1):
+## Features
 
-```sh
-node server.mjs
+- Friends-only Feed with a 48-hour interaction window, reactions and comments.
+- Personal invitation links, exact-username requests and limited discovery through
+  comments the requester may already view; no public profile directory.
+- Private Profile/calendar, editable identity and gallery-selected avatars.
+- Camera-only post photos (up to three), proportional JPEG optimization, stable
+  4:5 previews/carousels and an uncropped viewer.
+- Three published posts per configured local day, enforced server-side.
+- Incoming-request indicators and Activity for comments/reactions on your posts.
+- Optional Web Push, device/category preferences and installed-PWA invitations.
+- Email/password and Google Auth, onboarding and isolated password recovery.
+- Mobile safe areas, accessible dialogs and an existing dark/orange design.
+
+## Stack and architecture
+
+Vanilla JavaScript modules, HTML and CSS; no frontend framework or bundler.
+Supabase provides Auth, PostgreSQL RPC/RLS, private Storage and Edge Functions.
+A service worker supports the PWA shell and push. Netlify packages and publishes
+the static app. npm dependencies are development/test tools only.
+
+```mermaid
+flowchart LR
+  UI["PWA: app.js + cloud.js"] --> Auth["Supabase Auth"]
+  UI --> DB["PostgreSQL RPCs + RLS"]
+  UI --> Storage["Private Storage"]
+  DB --> Queue["Notification outbox"]
+  Queue --> Edge["Edge dispatcher"]
+  Edge --> Push["Web Push"]
+  Netlify["Netlify: build → dist"] --> UI
 ```
 
-Open http://localhost:5173. This is a development source server, not a production
-publish configuration. **Current config.js contains public production connection
-settings: loading the browser app may contact production.** Do not use it for
-destructive tests. Prefer mock-based tests or a separately approved disposable
-configuration. Cloud mode is enabled when the public URL/key are present; the
-labeled demo is used only when they are absent. Do not change production config
-merely to run tests.
+Engineering notes cover [upload recovery](supabase/POST_UPLOAD_RECOVERY.md),
+[account/request isolation](STABILIZATION_RELEASE.md),
+[Web Push](supabase/WEB_PUSH.md), and [migration status](supabase/MIGRATION_STATUS.md).
+The source is intentionally small; no restructuring is needed to contribute.
 
-Never put service-role keys, private VAPID keys, SMTP credentials or access tokens
-in frontend files. Publishable/anon keys and the public VAPID key are intentionally
-browser-visible. The browser SDK is pinned to **2.118.0**; see
-[SDK_VERSIONS.md](supabase/SDK_VERSIONS.md) for compatibility and caching limits.
+## Run the safe local demo
 
-## Build and checks
+Use **Node.js 24** and npm:
 
 ```sh
-node --test tests/*.test.mjs
-node --check app.js
-node --check cloud.js
-node scripts/build.mjs
-git diff --check
+npm ci --ignore-scripts
+npm run dev
 ```
 
-The build is static packaging, not a bundler/minifier. It validates public config
-and recreates **dist/** from an explicit allowlist, including **push-sw.js**.
-SQL, Edge source, tests, docs, development tooling and original logo/master are
-excluded. Never publish the repository root or commit generated dist/.
+Open **http://localhost:5173**. Fresh clones use the existing labeled local demo,
+with synthetic posts/friends and no Supabase connection or API keys. Demo invitation
+links are examples. Camera access still needs a camera and localhost/HTTPS.
 
-Optional real-SDK smoke tests need the hash-verified ignored artifact documented
-in [SDK_VERSIONS.md](supabase/SDK_VERSIONS.md); otherwise four tests explicitly skip.
-PostgreSQL/PGlite/native prerequisites and evidence boundaries are documented in
-[NATIVE_POSTGRES_TESTS.md](supabase/NATIVE_POSTGRES_TESTS.md). Mock tests and SQL
-metadata fixtures are not hosted Auth/Storage or physical Android/iPhone tests.
-The standard JavaScript suite and build need no application package installation.
+For your own disposable backend, copy config.example.json to ignored
+**config.local.json** and supply only that project's public configuration.
+The local server validates it and rejects the production project.
+See [CONTRIBUTING.md](CONTRIBUTING.md); never use privileged keys or real users.
+Do not expose the source server to the internet.
 
-## Deployment and migration status
+## Checks
 
-Existing [netlify.toml](netlify.toml) sets build command
-**node scripts/build.mjs** and publish directory **dist**. Use the existing
-Git-connected main workflow only after approval; no new site or DNS setup.
+```sh
+npm test
+npm run check
+npm run test:sql
+npm run build
+```
 
-Read [DEPLOY.md](DEPLOY.md) and [MIGRATION_STATUS.md](supabase/MIGRATION_STATUS.md).
-Never rerun schema.sql on production, bulk-apply repository migrations, invent
-migration-history rows or repair the ledger without separate review.
-The release's **F02 then F06** changes are already applied and verified.
-**delete-account v7** is ACTIVE with the SDK pin. Do not repeat those backend
-steps during final frontend publication.
+| Command | What it verifies |
+| --- | --- |
+| npm test | UI/adapters, account races, comments, authorization contracts, media/branding and config/build behavior using synthetic responses. |
+| npm run check | JavaScript syntax, all three Edge syntax transpilation checks and public-config validation, offline. |
+| npm run test:sql | PGlite SQL/RLS regressions in disposable in-memory databases; no hosted backend. |
+| npm run build | Public-only **demo** output in dist/. |
 
-## Remaining beta limitations
+Four optional SDK smoke tests skip unless their hash-verified local artifact is
+provided; [instructions](supabase/SDK_VERSIONS.md). Default branding tests use the
+committed approved-master fingerprint. Original-source comparison is explicit
+authoring verification through AZICE_BRANDING_SOURCE, not a required untracked file.
+Native PostgreSQL and real-device/service tests are separate; mocks or PGlite do
+not prove hosted Auth, physical Storage cleanup or real push delivery.
 
-F01–F07 and R02 are implemented locally. **R03 remains an unresolved account-deletion
-concurrency risk**: native SQL/mock tests expose authorization/timing gaps, but
-surviving physical Storage objects have **not** been verified. Real R03/F03 Storage
-integration was blocked; the owner has stopped further R03 integration work for
-this beta. See [ACCOUNT_DELETION_R03.md](supabase/ACCOUNT_DELETION_R03.md) and
-[R03_LOCAL_INTEGRATION_ATTEMPT.md](supabase/R03_LOCAL_INTEGRATION_ATTEMPT.md).
-This is a recorded risk, not a fix or complete-erasure guarantee. Native Deno and
-real Storage failure cleanup remain unverified. The owner explicitly accepted
-R03's unresolved risk for this beta; acceptance does not establish complete erasure.
+## Production and previews
 
-Safety & Privacy: [aagameriaa@gmail.com](mailto:aagameriaa@gmail.com).
-Auth sender/SMTP configuration is separate; see
-[PASSWORD_RECOVERY.md](supabase/PASSWORD_RECOVERY.md).
+The unchanged Netlify command is **node scripts/build.mjs**, publishing **dist**.
+Its production context generates dist/config.js from **config.production.json**,
+which retains the exact existing public URL/key/VAPID values. No hosted settings,
+secrets or backend behavior change is required. The profile is intentionally
+public data; separating it prevents accidental use, not endpoint discovery.
+
+Source config, default local builds, branch deploys and PR previews are demo-only.
+**npm run build:production** is an explicit maintainer packaging check and does
+not deploy anything, but its output connects to production if opened.
+Generated dist/, local overrides, tools, SQL and operational files are not published
+by the frontend allowlist. APP_VERSION and PWA identity remain unchanged.
+
+## Known limits and publication decisions
+
+R03 account-deletion/upload concurrency remains unresolved and accepted for this
+beta. Physical Storage leakage has **not** been confirmed. No complete-erasure
+guarantee is made and no production reproduction is authorized.
+Native Deno and real Storage failure recovery also remain incompletely verified.
+
+[OPEN_SOURCE.md](OPEN_SOURCE.md) records the proposed branch protection, CI and
+preview restrictions, historical identity/privacy review, R03 disclosure decision,
+and outstanding publication approvals. MIT covers the application code, not bundled
+artwork or official branding. The mascot's ChatGPT origin is owner-confirmed;
+legacy/demo artwork rights still need confirmation. Package publishing remains
+private; see [BRANDING.md](BRANDING.md) before distributing a fork.
+No access to production services is granted by the source-code license.
+
+For security reports read [SECURITY.md](SECURITY.md). The existing
+[Safety & Privacy contact](mailto:aagameriaa@gmail.com) is separate from Auth
+email/SMTP configuration.

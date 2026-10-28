@@ -1,36 +1,68 @@
-# AziCe? mascot icon assets
+# AziCe? branding and artwork
 
-The approved source is `assets/logo.png` (600×600 RGBA PNG). Its outer corners are transparent, not baked-in white. Keep the source unchanged. `assets/azice-mascot-master-v2.png` is the 600×600 opaque square editing master; no text or rounded-square mask is baked into it.
+The application source code and documentation are [MIT-licensed](LICENSE).
+The official AziCe? name, logo, mascot and distinctive visual identity are
+reserved and excluded from that license, including all artwork in `assets/`.
+Third-party components retain their own licenses.
 
-The outer background was extended with the image-editing tool. The approved source was then composited back over that background: an ellipse centered at (300,295), radii (260,270), protects the mascot, with a short feather only at the outside edge. All 203,253 pixels inside its 96% core were copied exactly from the original flattened over #15171c. The foam, expression, mug, handle, hands, colors and drawing strokes are retained. No generated mascot redraw is used in the protected region. Visual review confirmed the whole mascot lies inside this region.
+You may refer to AziCe? by name to identify this project, credit its source or
+describe a contribution. Forks and derivatives must not imply official affiliation
+or endorsement. The MIT license does not grant permission to redistribute the
+reserved artwork or present a separate distribution as the official AziCe? app;
+seek separate permission for such use. This policy does not restrict reuse of
+MIT-licensed UI code or general colors, layout techniques and functionality.
+No registered-trademark status or guaranteed exclusive copyright is asserted.
 
-| Asset in `assets/` | Dimensions | Use |
-| --- | --- | --- |
-| `azice-pwa-192-v2.png` | 192×192 | Standard PWA icon and Web Push icon |
-| `azice-pwa-512-v2.png` | 512×512 | Standard PWA icon |
-| `azice-maskable-512-v2.png` | 512×512 | Android maskable icon, separate purpose |
-| `azice-apple-touch-180-v2.png` | 180×180 | Apple touch icon |
-| `azice-favicon-16-v2.png` | 16×16 | Browser favicon |
-| `azice-favicon-32-v2.png` | 32×32 | Browser favicon |
+## Artwork inventory and provenance
 
-All exports are losslessly compressed 8-bit RGB PNGs: fully opaque, square, dark in every corner, with no EXIF/ICC payload. The exports use Lanczos resizing from the master. The maskable variant scales the master to 400px, centers it on #15171c, and feathers only its background perimeter. The protected mascot ellipse maps to a maximum 180px radius, inside the 204.8px minimum safe-circle radius. The bright artwork measured at most 174.49px from center. The glow may extend beyond the safe circle; the mascot does not. No project/browser dependency was added; local post-processing used the bundled Sharp tooling.
+The owner confirms that the logo and beer-mug mascot were generated specifically
+for this project using ChatGPT, with no known third-party source material.
+That is an owner-provided provenance statement, not a guarantee of legal
+exclusivity or a third-party rights clearance. Derived exports remain reserved.
 
-Manifest identity, name, start URL, scope, standalone mode, existing #15171c theme/background, safe-area metadata and registration remain unchanged. The manifest URL remains `/manifest.webmanifest`. All platform references use new `-v2` filenames and the public-shell cache is bumped to `azice-shell-v2-mascot`; its old-cache cleanup and network-first behavior are retained. Web Push changes only its icon path; notification content, binding checks, routing and permissions are unchanged. Existing legacy icon files remain available for older installations/workers. The build excludes the source and authoring master, publishing only optimized exports and existing runtime assets. Neither source nor master is precached.
+| Files | Origin / status |
+| --- | --- |
+| `assets/logo.png` | Owner-confirmed ChatGPT mascot source; remains untracked and excluded from this preparation. |
+| `assets/azice-mascot-master-v2.png` | Editing master derived from that mascot; background extended with an image-editing tool while preserving the mascot core. |
+| `assets/azice-pwa-192-v2.png`, `assets/azice-pwa-512-v2.png` | Standard PWA/Web Push exports from the master. |
+| `assets/azice-maskable-512-v2.png` | Padded Android maskable export from the master. |
+| `assets/azice-apple-touch-180-v2.png` | Apple touch export from the master. |
+| `assets/azice-favicon-16-v2.png`, `assets/azice-favicon-32-v2.png` | Favicon exports from the master. |
+| `assets/icon-192.png`, `assets/icon-512.png` | Legacy AC? graphics, present in the initial starter commit; origin/rights still need owner confirmation. |
+| `assets/demo-beer.svg` | Inline vector demo illustration, present in the initial starter commit; origin/rights still need owner confirmation. No external image/font references were found in the SVG. |
 
-## Verification
+The legacy/demo graphics are also excluded from MIT pending that review. A Git
+commit establishes when a file entered this repository, not its authorship or
+rights. Do not infer clearance from the absence of a watermark or attribution.
 
-`node --test tests/branding.test.mjs` decodes the PNGs without new dependencies and checks dimensions, opacity, corner colors, protected source pixels, maskable safe-zone content, stable manifest identity, HTML references, service-worker caching and private-data/push boundaries. Run the full JavaScript suite, syntax checks and `node scripts/build.mjs`, then check every manifest/HTML/service-worker reference in `dist/`.
+## Creating your own distribution
 
-Visual review includes the source versus master, standard/Apple/maskable icons at 48px, favicons at actual 16/32px and a minimum-safe-circle crop. The detailed mascot naturally loses fine strokes at 16px, while retaining its gold/foam silhouette. No physical Android/iPhone installation or launcher update was performed locally.
+1. Choose your own app name and identity. Credit the MIT code and retain LICENSE;
+   a factual reference such as "based on AziCe?" must not imply endorsement.
+2. Replace the reserved artwork with graphics you may distribute. Keep compatible
+   sizes/paths or update references in `index.html`, `manifest.webmanifest`,
+   `sw.js`, `push-sw.js` and `demo.js`. Check any other asset references too.
+   Replace the demo illustration and legacy icons as well as the mascot exports;
+   omit unused authoring material from your distribution.
+3. For a separate app, choose your own manifest name, identity, start URL/scope,
+   deployment origin and backend configuration. Do not use the official production
+   public profile for your deployment. Default local/preview builds remain demo.
+   These instructions are for forks; the official app's identity stays unchanged.
+4. Update branding-specific expected pixels and references to your own approved
+   artwork. Preserve dimension, opacity, safe-zone, caching and packaging tests;
+   do not simply remove meaningful checks. Inspect icons at home-screen sizes.
 
-Local results: all 245 JavaScript tests (including five branding tests), 32 JavaScript syntax checks, production build and whitespace checks passed. All 16 referenced runtime paths exist in `dist/`; every built PNG matches its source export. Authoring source/master are absent from the build, and every non-icon manifest field is identical to the previous version.
+## Existing asset checks
 
-## Existing installed app updates
+The master is an opaque 600×600 square. Standard exports are 192/512px, maskable
+512px, Apple 180px and favicons 16/32px. Platform PNGs are opaque RGB, with no baked
+rounded mask or white corners. The maskable mascot fits the central safe circle.
+Builds exclude the original source and editing master; legacy icons remain for
+older installations. No asset bytes or runtime references change in this update.
 
-Versioned URLs prevent old icon bytes being reused for a new request; the service-worker update makes the new shell/assets available. Neither mechanism can force a device launcher to replace an existing icon immediately. Keep the manifest URL and identity stable.
-
-Android Chrome checks manifests and updates installed WebAPKs on its own schedule; launching then closing the installed app and later allowing normal Wi-Fi/charging time may be necessary. A launcher may continue to show its cached icon during that process. See [Chrome's manifest update behavior](https://web.dev/articles/manifest-updates).
-
-For iOS, do not promise an automatic replacement of an already installed Home Screen icon. Test a fresh Safari → Share → Add to Home Screen installation after release. If an existing icon stays old, re-adding the Home Screen app may be required; device/browser behavior has not been verified here. Reinstallation can require signing in and enabling notifications again. [Apple's touch-icon metadata documentation](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html) describes the icon link; it does not promise refresh of an existing installation.
-
-The safe-zone rule and separate maskable purpose follow [Chrome's maskable-icon guidance](https://web.dev/articles/maskable-icon). No remote services, SQL, secrets, commits, pushes or deployments are part of this local asset update.
+Run `node --test tests/branding.test.mjs`: default tests pin the committed master's
+203,253-pixel protected core and verify exports, safe zone and runtime references.
+Optional `AZICE_BRANDING_SOURCE` enables direct comparison with an owner-held
+original; the untracked source is never required or implicitly approved for commit.
+Versioned URLs cannot force existing Android/iOS launchers to refresh cached icons;
+test fresh installations separately when artwork changes.

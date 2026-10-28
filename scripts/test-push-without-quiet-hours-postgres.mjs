@@ -1,6 +1,6 @@
 // Optional actual PostgreSQL-engine tests in disposable in-memory PGlite, never a remote DB.
-// npm install --prefix supabase/.temp/push-tests --no-save --ignore-scripts @electric-sql/pglite@0.5.11 typescript@5.9.3
-import {PGlite} from '../supabase/.temp/push-tests/node_modules/@electric-sql/pglite/dist/index.js';
+// npm ci --ignore-scripts installs the locked development-only test tools.
+import {PGlite} from '@electric-sql/pglite';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const db=new PGlite(),read=path=>fs.readFile(new URL('../'+path,import.meta.url),'utf8');

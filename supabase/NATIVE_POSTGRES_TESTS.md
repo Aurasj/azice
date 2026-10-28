@@ -1,5 +1,12 @@
 # Local native PostgreSQL stabilization verification
 
+Contributor setup is now documented in ../CONTRIBUTING.md. Default SQL checks use
+the locked root PGlite dependency (`npm ci --ignore-scripts; npm run test:sql`).
+The machine-specific native setup and paths below are a historical verification
+record, not requirements for contributor CI. Native runners remain opt-in and
+require their existing loopback/disposable-marker safeguards. No R03 integration
+work is resumed by the contributor workflow.
+
 ## Actual environment and scope (2026-10-27)
 
 The existing checkpoint/branch and APP_VERSION 0.1.0.3 were preserved. No software
