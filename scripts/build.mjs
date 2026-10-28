@@ -1,6 +1,7 @@
-import { cpSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {buildConfig,configScript} from './config.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
@@ -19,18 +20,9 @@ const files = [
 ];
 const directories = ['assets'];
 
-const config = readFileSync(join(root, 'config.js'), 'utf8');
-if (!/supabaseUrl:\s*['"]https:\/\/[^'"]+\.supabase\.co['"]/.test(config)) {
-  throw new Error('Build stopped: config.js has no valid Supabase project URL.');
-}
-if (!/supabasePublishableKey:\s*['"](?:sb_publishable_[^'"]+|eyJ[^'"]+)['"]/.test(config)) {
-  throw new Error('Build stopped: config.js must contain only a public publishable/anon key.');
-}
-if (/sb_secret_|service_role|SUPABASE_SERVICE_ROLE_KEY/i.test(
-  config.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
-)) {
-  throw new Error('Build stopped: possible secret key in config.js.');
-}
+const args=process.argv.slice(2);
+if(args.length>1||args.some(arg=>!['--production','--local'].includes(arg)))throw Error('Use no option (demo), --local or --production.');
+const {mode,config}=buildConfig(root,{mode:args[0]?.slice(2)||'demo'});
 
 for (const entry of [...files, ...directories]) {
   if (!existsSync(join(root, entry))) throw new Error(`Missing build input: ${entry}`);
@@ -41,7 +33,8 @@ mkdirSync(dist, { recursive: true });
 for (const file of files) {
   const dest = join(dist, file);
   mkdirSync(dirname(dest), { recursive: true });
-  copyFileSync(join(root, file), dest);
+  if(file==='config.js')writeFileSync(dest,configScript(config));
+  else copyFileSync(join(root, file), dest);
 }
 for (const dir of directories) {
   // Keep the approved source and editing master locally; publish optimized icon exports.
@@ -49,4 +42,4 @@ for (const dir of directories) {
   cpSync(join(root, dir), join(dist, dir), { recursive: true, filter: source => !authoringAssets.has(source) });
 }
 
-console.log('AziCe? build complete: dist/ (public frontend files only)');
+console.log('AziCe? '+mode+' build complete: dist/ (public frontend files only)');

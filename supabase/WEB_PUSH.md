@@ -1,5 +1,10 @@
 # AziCe? Web Push — review and backend-first rollout
 
+Contributor setup: `npm ci --ignore-scripts`, then `npm run check` and
+`npm run test:sql`. Test dependencies are locked at the repository root. Older
+supabase/.temp installation instructions below are historical, not needed for
+these checks. No production credentials or live backend are used by contributor CI.
+
 The initial Web Push backend and the 24/7 delivery migration are deployed. The operator confirmed that `20261023202526_remove_push_quiet_hours.sql` was applied successfully and that a real Android push for a new comment was received afterward. This is operator-reported production verification; Codex did not execute remote SQL or perform that device test.
 
 For BETA v0.1.1.0 use [MIGRATION_STATUS.md](MIGRATION_STATUS.md) and ../DEPLOY.md.

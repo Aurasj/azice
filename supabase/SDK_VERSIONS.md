@@ -1,5 +1,11 @@
 # Supabase JavaScript SDK pins (R02, local review)
 
+Contributor setup: run `npm ci --ignore-scripts` for locked SQL/syntax tools;
+`npm test` runs synthetic transport tests, with four real-bundle tests explicitly
+skipped unless the optional artifact below is supplied. No SDK version or backend
+behavior changes in this preparation. Source/default builds are demo-only; see
+../CONTRIBUTING.md for explicit production packaging and authoring checks.
+
 ## Inventory and selected version
 
 All application Supabase JavaScript SDK references use **2.118.0**:
@@ -27,12 +33,12 @@ the existing push functions, rather than intentionally upgrading their SDK. This
 does not prove which older CDN response an installed browser or previously compiled
 floating Edge deployment may have cached. No production runtime was inspected.
 
-The application has no npm SDK dependency/manifest, import map, Deno lockfile or
-SDK build dependency. `scripts/build.mjs` copies the public frontend allowlist and
-does not resolve or fetch the SDK. Tests use mocks unless the optional exact-bundle
-fixture below is supplied. Existing temporary PGlite/TypeScript/pg tooling contains
-no application SDK dependency. No package, bundler, vendored SDK or dependency
-installation is introduced. Other existing Edge imports (`web-push@3.6.7` and
+The application has no npm Supabase SDK dependency, import map, Deno lockfile or
+SDK build dependency. The root package/lock introduced for contributors contains
+only pinned PGlite/TypeScript test tools. `scripts/build.mjs` generates public
+configuration and copies its allowlist without resolving/fetching the SDK. Tests
+use synthetic transport unless the optional exact-bundle fixture below is supplied.
+R02 introduced no bundler or vendored SDK. Other existing Edge imports (`web-push@3.6.7` and
 `deno.land/std@0.168.0`) are already exact and remain unchanged.
 
 ## Compatibility verified locally

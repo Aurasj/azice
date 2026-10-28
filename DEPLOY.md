@@ -1,5 +1,13 @@
 # AziCe? BETA v0.1.1.0 release checklist
 
+Contributor preparation update: source/default builds now use demo configuration.
+Netlify's existing production context still runs `node scripts/build.mjs` and
+generates the unchanged public values from config.production.json into dist/config.js.
+Previews/branches are demo-only; no hosted setting was changed. Local production
+packaging must now be explicit: `npm run build:production`. Never manually deploy
+the default demo output over production. See CONTRIBUTING.md and OPEN_SOURCE.md.
+The earlier release checklist below is historical; this preparation deploys nothing.
+
 This is preparation for the **existing** Git-connected Netlify site and Supabase
 backend. No new site, domain, DNS, Auth, SMTP or scheduler setup is needed.
 The owner has authorized frontend publication. Previous frontend baseline:

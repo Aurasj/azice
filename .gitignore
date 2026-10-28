@@ -12,3 +12,7 @@ supabase/.temp/
 
 dist/
 
+# Contributor overrides and local deployment-tool state; never publish these.
+config.local.json
+.netlify/
+

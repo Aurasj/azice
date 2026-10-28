@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {inflateSync} from 'node:zlib';
 import vm from 'node:vm';
+import {createHash} from 'node:crypto';
 
 const read=path=>fs.readFileSync(new URL('../'+path,import.meta.url));
 const exports=[['pwa-192',192],['pwa-512',512],['maskable-512',512],['apple-touch-180',180],['favicon-16',16],['favicon-32',32]];
 // Decode the checked-in 8-bit, non-interlaced RGB/RGBA PNGs without test dependencies.
-function png(path){
- const file=read(path);assert.equal(file.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+function png(path,absolute=false){
+ const file=absolute?fs.readFileSync(path):read(path);assert.equal(file.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
  const width=file.readUInt32BE(16),height=file.readUInt32BE(20),type=file[25],channels=type===2?3:4;
  assert.equal(file[24],8);assert.ok([2,6].includes(type));assert.equal(file[28],0);
  const chunks=[];for(let offset=8;offset<file.length;){const n=file.readUInt32BE(offset),name=file.toString('ascii',offset+4,offset+8);if(name==='IDAT')chunks.push(file.subarray(offset+8,offset+8+n));offset+=12+n;}
@@ -27,14 +28,20 @@ test('six versioned platform icons are exact-size opaque RGB PNGs with dark squa
  }
 });
 
-test('master keeps the approved source illustration pixels while extending only the outer background',()=>{
- const source=png('assets/logo.png'),master=png('assets/azice-mascot-master-v2.png');assert.equal(master.width,600);assert.equal(master.height,600);assert.equal(master.channels,3);
- let protectedCount=0;const matte=[21,23,28];
+test('master retains the approved illustration fingerprint; optional authoring source compares pixel-for-pixel',()=>{
+ const master=png('assets/azice-mascot-master-v2.png');assert.equal(master.width,600);assert.equal(master.height,600);assert.equal(master.channels,3);
+ // Approved v2 core was previously verified against the original. Lock decoded
+ // pixels, not PNG encoding/metadata, so clones need no untracked authoring file.
+ const source=process.env.AZICE_BRANDING_SOURCE?png(process.env.AZICE_BRANDING_SOURCE,true):null;
+ if(source){assert.equal(source.width,600);assert.equal(source.height,600);assert.equal(source.channels,4);}
+ let protectedCount=0;const matte=[21,23,28],core=Buffer.alloc(600*600*3);
  for(let y=0;y<600;y++)for(let x=0;x<600;x++)if(Math.hypot((x-300)/260,(y-295)/270)<=.96){
-  protectedCount++;const original=source.pixel(x,y),actual=master.pixel(x,y),alpha=original[3]/255;
-  for(let c=0;c<3;c++)assert.ok(Math.abs(actual[c]-(original[c]*alpha+matte[c]*(1-alpha)))<=1,'approved illustration pixel preserved');
+  const actual=master.pixel(x,y);actual.copy(core,protectedCount++*3);
+  if(source){const original=source.pixel(x,y),alpha=original[3]/255;
+   for(let c=0;c<3;c++)assert.ok(Math.abs(actual[c]-(original[c]*alpha+matte[c]*(1-alpha)))<=1,'approved illustration pixel preserved');}
  }
- assert.ok(protectedCount>200000);
+ assert.equal(protectedCount,203253);
+ assert.equal(createHash('sha256').update(core.subarray(0,protectedCount*3)).digest('hex'),'193781f6779e5aff3d78456479db9db62c3dcabcc80d98168b0c335dfa3e682b');
 });
 
 test('maskable artwork fits the central 40%-radius safe circle with opaque padding',()=>{
