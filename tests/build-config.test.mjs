@@ -11,6 +11,7 @@ const config={supabaseUrl:'https://synthetic.supabase.co',supabasePublishableKey
 const files=['index.html','app.js','cloud.js','demo.js','config.js','styles.css','sw.js','push-sw.js','manifest.webmanifest'];
 function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'azice-build-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ fs.mkdirSync(path.join(root,'src'));for(const file of ['presentation.js','auth-helpers.js','image-processing.js','demo.js','cloud.js'])fs.copyFileSync(new URL('../src/'+file,import.meta.url),path.join(root,'src',file));
  fs.mkdirSync(path.join(root,'scripts'));fs.mkdirSync(path.join(root,'assets'));
  for(const file of [...files,'scripts/build.mjs','scripts/config.mjs'])fs.copyFileSync(new URL('../'+file,import.meta.url),path.join(root,file));
  fs.writeFileSync(path.join(root,'config.production.json'),JSON.stringify(config));
@@ -24,9 +25,10 @@ function generated(root){const c={window:{}};vm.runInNewContext(fs.readFileSync(
 
 test('real CLI demo and production builds retain allowlist, generate only dist/config.js and exclude authoring/config files',t=>{
  const root=fixture(t),source=fs.readFileSync(path.join(root,'config.js'),'utf8');
- for(const [args,env,expected]of [[[],{},DEMO_CONFIG],[['--production'],{},config],[[],{NETLIFY:'true',CONTEXT:'production'},config],[[],{NETLIFY:'true',CONTEXT:'deploy-preview'},DEMO_CONFIG]]){
+ for(const [args,env,expected]of [[[],{},DEMO_CONFIG],[['--production'],{},config],[[],{NETLIFY:'true',CONTEXT:'production'},config],[[],{NETLIFY:'true',CONTEXT:'deploy-preview'},DEMO_CONFIG],[[],{NETLIFY:'true',CONTEXT:'branch-deploy'},DEMO_CONFIG]]){
   const result=run(root,args,env);assert.equal(result.status,0,result.stderr);assert.deepEqual(generated(root),expected);
-  assert.deepEqual(fs.readdirSync(path.join(root,'dist')).sort(),[...files,'assets'].sort());
+  assert.deepEqual(fs.readdirSync(path.join(root,'dist')).sort(),[...files,'assets','src'].sort());
+  assert.deepEqual(fs.readdirSync(path.join(root,'dist/src')).sort(),['auth-helpers.js','cloud.js','demo.js','image-processing.js','presentation.js']);
   assert.deepEqual(fs.readdirSync(path.join(root,'dist/assets')),['runtime.svg']);
   assert.equal(fs.readFileSync(path.join(root,'config.js'),'utf8'),source);
  }

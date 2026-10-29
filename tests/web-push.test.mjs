@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -82,7 +83,7 @@ function app({storage=new Map(),now=Date.now(),standalone=true}={}){
   FormData:class{constructor(form){return Object.entries(form.values);}},
   setTimeout:(fn,delay)=>{const id=++timerId;timers.set(id,{fn,delay});return id;},clearTimeout:id=>timers.delete(id),document,
   window:{AZICE_CONFIG:{pushPublicKey:key},Notification,PushManager:class{},matchMedia:()=>({matches:standalone}),addEventListener(){},scrollTo(){}}});
- vm.runInContext(source+'\nglobalThis.testApp={state,setCurrentUser,enablePush,forgetPushDevice,syncPushAccount,openNotification,notificationsSection,notificationsView,openNotifications,handleAction,pushDefaults,boot,home,loadPushSettings,pushInvitationEligible,schedulePushInvitation,installEligible,scheduleInstall,profileView,setApi:v=>{api=v;}};',context);
+ runAppInContext(source+'\nglobalThis.testApp={state,setCurrentUser,enablePush,forgetPushDevice,syncPushAccount,openNotification,notificationsSection,notificationsView,openNotifications,handleAction,pushDefaults,boot,home,loadPushSettings,pushInvitationEligible,schedulePushInvitation,installEligible,scheduleInstall,profileView,setApi:v=>{api=v;}};',context);
  const a=context.testApp;a.setApi(api);a.setCurrentUser({id:ID});a.state.profile={id:ID,display_name:'Test'};a.state.view='feed';
  return {a,api,context,session,storage,bindings,calls,toast,root,events,dialogs,gestures,timers,advance:ms=>{now+=ms;},
   fire:delay=>{const entry=[...timers].find(([,timer])=>timer.delay===delay);assert.ok(entry,'Expected scheduled invitation');timers.delete(entry[0]);return entry[1].fn();},get asks(){return asks;}};

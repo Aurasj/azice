@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,7 +25,7 @@ function setup(){
   document:{visibilityState:'visible',querySelector:s=>s==='#toast'?toast:s==='#app'?root:s==='#feed-invite'?inviteSlot:s==='.friends-button'?button:s==='#friends-title'?{focus(){focused=true;}}:{},querySelectorAll:()=>[],addEventListener:(e,f)=>{events.document[e]=f;}},
   window:{AZICE_CONFIG:{},scrollTo:(...v)=>{scroll=v;},addEventListener:(e,f)=>{events.window[e]=f;}},
  });
- vm.runInContext(source+'\nglobalThis.app={state,setCurrentUser,refreshFriends,refreshOnReturn,openFriends,feedView,profileView,friendsView,handleAction,boot,render,installEligible,dismissInstall,scheduleInstall,setApi:value=>{api=value;}};',context);
+ runAppInContext(source+'\nglobalThis.app={state,setCurrentUser,refreshFriends,refreshOnReturn,openFriends,feedView,profileView,friendsView,handleAction,boot,render,installEligible,dismissInstall,scheduleInstall,setApi:value=>{api=value;}};',context);
  const app=context.app;app.setApi(api);app.setCurrentUser(user);app.state.profile={display_name:'Test'};app.state.view='feed';
  return {app,api,context,events,root,toast,button,inviteSlot,setData:v=>{data=v;},setUser:v=>{user=v;},get reads(){return reads;},get focused(){return focused;},get scroll(){return scroll;},auth:user=>authCallback(user)};
 }

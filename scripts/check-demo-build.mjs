@@ -8,6 +8,7 @@ try{
  const value=validateConfig(context.window.AZICE_CONFIG);
  if(Object.keys(context.window.AZICE_CONFIG).length!==Object.keys(DEMO_CONFIG).length||Object.values(value).some(Boolean))throw Error();
 }catch{throw Error('Generated CI output must be demo-only. Configuration values are not logged.');}
-assert.deepEqual(fs.readdirSync('dist').sort(),['app.js','assets','cloud.js','config.js','demo.js','index.html','manifest.webmanifest','push-sw.js','styles.css','sw.js'].sort());
+assert.deepEqual(fs.readdirSync('dist').sort(),['app.js','src','assets','cloud.js','config.js','demo.js','index.html','manifest.webmanifest','push-sw.js','styles.css','sw.js'].sort());
+assert.deepEqual(fs.readdirSync('dist/src').sort(),['auth-helpers.js','cloud.js','demo.js','image-processing.js','presentation.js']);
 for(const file of ['logo.png','azice-mascot-master-v2.png'])assert.equal(fs.existsSync('dist/assets/'+file),false);
 console.log('Demo-only packaging and private/authoring exclusions passed.');

@@ -2,8 +2,10 @@
 // No camera permission, Supabase, configuration loading or service worker is involved.
 import http from 'node:http';
 import fs from 'node:fs';
+import {serveModuleFixture} from './public-modules.mjs';
 const read=name=>fs.readFileSync(new URL(`../../${name}`,import.meta.url),'utf8');
-const source=read('app.js').replace(/^import .*;\r?\n/gm,'').replace(/\(async\(\)=>\{\s*state.view='loading';render\(\);await boot\(\);\s*\}\)\(\);\s*$/,'').replace(/^if\('serviceWorker'.*$/gm,'');
+const imageImport="import { canvasBlob, decodeAvatar } from '/src/image-processing.js';\n";
+const source=imageImport+"import { html, fmt, dayISO, initials, brand, activityBellIcon, backBar, photoCard, avatar } from '/src/presentation.js';\n"+read('app.js').replace(/^import .*;\r?\n/gm,'').replace(/\(async\(\)=>\{\s*state.view='loading';render\(\);await boot\(\);\s*\}\)\(\);\s*$/,'').replace(/^if\('serviceWorker'.*$/gm,'');
 const viewport=read('index.html').match(/<meta name="viewport"[^>]+>/)[0];
 const fixture=`
 const params=new URLSearchParams(location.search),preset=params.get('safe')||'portrait';
@@ -99,7 +101,7 @@ function checkLayout(){
 }
 checkLayout();window.addEventListener('resize',()=>requestAnimationFrame(checkLayout));
 `;
-http.createServer((req,res)=>{
+http.createServer((req,res)=>{if(serveModuleFixture(req,res))return;
  if(req.url==='/styles.css'){res.setHeader('Content-Type','text/css');res.end(read('styles.css'));}
  else if(req.url==='/'||req.url.startsWith('/?')){res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><html lang="en"><head><meta charset="utf-8">'+viewport+'<title>AziCe? simulated safe-area check</title><link rel="stylesheet" href="/styles.css"></head><body><div id="app"></div><div id="toast" class="toast" hidden></div><script type="module">'+source+'\n'+fixture+'</script></body></html>');}
  else{res.statusCode=404;res.end();}

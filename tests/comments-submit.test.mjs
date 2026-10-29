@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -11,7 +12,7 @@ function setup(view='feed'){
  const root={innerHTML:''},toast={hidden:true},events={},forms=[],calls=[],reads=[];let confirms=0,confirmation=async()=>true;
  const document={visibilityState:'visible',querySelector:s=>s==='#app'?root:s==='#toast'?toast:null,querySelectorAll:s=>s==='form[data-form="comment"]'?forms:[],addEventListener:(name,fn)=>{events[name]=fn;}};
  const context=vm.createContext({URLSearchParams,Intl,Map,Set,WeakMap,Date,console:{error(){},warn(){}},document,navigator:{},location:{search:'',origin:'https://azice.test',protocol:'https:'},window:{AZICE_CONFIG:{},scrollTo(){},addEventListener(){}},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},setTimeout:()=>1,clearTimeout(){},FormData:class{constructor(form){this.body=form.input.value;}get(name){return name==='body'?this.body:null;}}});
- vm.runInContext(source+'\nglobalThis.app={state,setCurrentUser,render,postCard,handleAction,setApi:value=>{api=value;},setConfirm:fn=>{confirmInApp=fn;}};',context);
+ runAppInContext(source+'\nglobalThis.app={state,setCurrentUser,render,postCard,handleAction,setApi:value=>{api=value;},setConfirm:fn=>{confirmInApp=fn;}};',context);
  const app=context.app,posts=[post('one'),post('two')];
  const api={mode:'cloud',getUser:async()=>({id:app.state.user.id}),getMyProfile:async()=>({id:app.state.user.id,display_name:'Me'}),getHistory:async()=>structuredClone(posts),getFeed:async()=>{reads.push('feed');return structuredClone(posts);},getPost:async id=>{reads.push(id);return structuredClone(posts.find(p=>p.id===id));},getActivity:async()=>({items:[],unread:false}),comment:async(id,body,owner)=>{calls.push({id,body,owner});posts.find(p=>p.id===id).comments.push({id:'c'+calls.length,author_id:'A',author_name:'Me',body,created_at:new Date().toISOString()});}};
  app.setApi(api);app.setConfirm(()=>{confirms++;return confirmation();});

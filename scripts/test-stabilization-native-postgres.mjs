@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 
-if(!process.env.AZICE_TEST_PG_MODULE)throw Error('Set AZICE_TEST_PG_MODULE; see supabase/NATIVE_POSTGRES_TESTS.md.');
+if(!process.env.AZICE_TEST_PG_MODULE)throw Error('Set AZICE_TEST_PG_MODULE; see docs/testing/postgres.md.');
 const {default:pg}=await import(pathToFileURL(process.env.AZICE_TEST_PG_MODULE).href);
 const port=Number(process.env.AZICE_TEST_PG_PORT||55439);
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid local test port');

@@ -24,6 +24,13 @@ attempt to access other users' data, or attach credentials to issues/PRs.
 
 ## Known limitation
 
+Existing evidence is indexed under [security documentation](docs/README.md#security-evidence).
+Moving documentation does not resolve the risk or authorize further testing.
+
+[Architecture](docs/ARCHITECTURE.md) describes current module/trust boundaries.
+The root adapter files remain compatibility exports; server authorization stays
+in the existing backend. Source/configuration availability grants no data access.
+
 R03 (concurrent account deletion and uploads) remains unresolved and accepted for
 this beta. Local metadata/mock tests identified a concurrency risk; surviving
 physical Storage bytes have not been verified. Do not claim complete erasure or
@@ -33,3 +40,7 @@ introduced by this policy. Further R03 integration work is stopped for this beta
 Native Deno and real Storage failure/recovery verification also remain incomplete.
 The owner must approve public disclosure scope and the reporting process before
 changing visibility; this file does not change any GitHub or hosted-service setting.
+
+Rendering/test limitations, including the synthetic 390×320 Activity fixture,
+are recorded separately in [verification limits](docs/testing/verification-limits.md).
+That result is not a confirmed security defect or a new production reproduction.

@@ -1,3 +1,4 @@
+import {moduleGraph} from './fixtures/public-modules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -43,17 +44,17 @@ test('security audit: account deletion removed from RPC and only in Edge Functio
   assert.ok(schema.includes('create policy avatar_remove on storage.objects for delete to authenticated'),
     'avatar_remove policy must exist so official Storage API can remove files');
 
-  // 4. cloud.js uses Edge Function solely without client-side fallback
-  const cloud = fs.readFileSync(path.join(rootDir, 'cloud.js'), 'utf-8');
+  // 4. src/cloud.js uses Edge Function solely without client-side fallback
+  const cloud = fs.readFileSync(path.join(rootDir, 'src', 'cloud.js'), 'utf-8');
   assert.ok(cloud.includes('client.functions.invoke(\'delete-account\')'),
-    'cloud.js must invoke the delete-account Edge Function');
+    'src/cloud.js must invoke the delete-account Edge Function');
   assert.ok(!cloud.includes('delete_my_account'),
-    'cloud.js must not reference deleted delete_my_account RPC');
+    'src/cloud.js must not reference deleted delete_my_account RPC');
 });
 
 test('security audit: no privileged keys in frontend or public code', () => {
   const filesToCheck = ['app.js', 'cloud.js', 'demo.js', 'config.js', 'index.html', 'server.mjs'];
-  for (const file of filesToCheck) {
+  for (const file of new Set([...filesToCheck,...[...moduleGraph().keys()].map(id=>new URL(id).pathname.slice(1))])) {
     const content = fs.readFileSync(path.join(rootDir, file), 'utf-8');
     assert.ok(!/service_role\s*[:=]/i.test(content), `${file} must not assign service_role keys`);
     assert.ok(!/secret_key\s*[:=]/i.test(content), `${file} must not assign secret keys`);

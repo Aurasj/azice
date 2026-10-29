@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -11,7 +12,7 @@ function setup(){
  const document={visibilityState:'visible',querySelector:s=>s==='#app'?root:s==='#toast'?toast:null,querySelectorAll:()=>[],addEventListener:(name,fn)=>{events.document[name]=fn;}};
  const window={AZICE_CONFIG:{},scrollX:0,scrollY:420,scrollTo:(...args)=>scrolls.push(args),addEventListener:(name,fn)=>{events.window[name]=fn;}};
  const context=vm.createContext({URLSearchParams,Intl,Map,Set,Date,console:{error(){},warn(){}},document,window,navigator:{},location:{search:'',origin:'https://azice.test',protocol:'https:'},sessionStorage:{getItem:()=>null,setItem(){}},setTimeout:()=>1,clearTimeout(){},URL:{revokeObjectURL:url=>revoked.push(url)}});
- vm.runInContext(source+'\nglobalThis.app={state,home,refreshOnReturn,refreshPosts,privatePhotoURL,setCurrentUser,render,handleAction,setApi:value=>{api=value;}};',context);
+ runAppInContext(source+'\nglobalThis.app={state,home,refreshOnReturn,refreshPosts,privatePhotoURL,setCurrentUser,render,handleAction,setApi:value=>{api=value;}};',context);
  const app=context.app,api={mode:'cloud',getUser:async()=>user,getFeed:async()=>{reads++;return server;},getActivity:async()=>({items:[],unread:false}),friendData:async()=>({friends:[],incoming:[],outgoing:[]}),imageUrl:async path=>{downloads.push(path);return `blob:${path}`;}};app.setApi(api);app.setCurrentUser(user);app.state.profile={id:'A',display_name:'Me'};app.state.view='feed';
  const background=()=>{document.visibilityState='hidden';events.document.visibilitychange();};
  const resume=()=>{document.visibilityState='visible';return events.document.visibilitychange();};

@@ -1,3 +1,5 @@
+import {compactCSS} from './fixtures/css-contract.mjs';
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +10,7 @@ import { createCloud } from '../cloud.js';
 // exercises real rendering, browser JPEG encoding and EXIF/GPS removal separately.
 
 const raw=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
-const css=fs.readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+const css=compactCSS(fs.readFileSync(new URL('../styles.css',import.meta.url),'utf8'));
 const source=raw.replace(/^import .*;\r?\n/gm,'').replace(/\(async\(\)=>\{\s*state.view='loading';render\(\);await boot\(\);\s*\}\)\(\);\s*$/,'');
 function setup(){
  const events={window:{},document:{}},canvases=[],created=[],revoked=[],dialogs=[],uploads=[],draws=[];
@@ -37,7 +39,7 @@ function setup(){
   createImageBitmap:async(file,options)=>{assert.equal(options.imageOrientation,'from-image');return bitmap;},
   sessionStorage:{getItem:()=>null,setItem(){}},setTimeout:()=>1,clearTimeout(){},
   window:{AZICE_CONFIG:{},addEventListener:(t,f)=>{events.window[t]=f;},scrollTo(){}}});
- vm.runInContext(source+`\nglobalThis.app={state,setCurrentUser,canvasBlob,capture,startCamera,stopCamera,galleryAvatar,decodeAvatar,
+ runAppInContext(source+`\nglobalThis.app={state,setCurrentUser,canvasBlob,capture,startCamera,stopCamera,galleryAvatar,decodeAvatar,
   privatePhotoURL,clearPhotoCache,draftPhotoURL,cleanDraftPhotoURLs,openPhotoViewer,closePhotoViewer,photoCard,newPostView,editProfileView,handleAction,
   setApi:value=>{api=value;},getViewer:()=>photoViewer};`,context);
  const app=context.app,api={mode:'cloud',imageUrl:async path=>`blob:${path}`,getMyProfile:async()=>({id:'a',display_name:'Alex',username:'alex'}),saveAvatar:async file=>{uploads.push(file);return 'avatar:a/new.jpg';}};
@@ -202,6 +204,39 @@ test('avatar unsupported/invalid images fail clearly; decoding fallback revokes 
  const img=await h.app.decodeAvatar(new Blob(['image']));assert.equal(img.width,80);assert.deepEqual(h.revoked,['blob:photo-0']);
 });
 
+test('bitmap decode returns the same oriented bitmap; closing remains the avatar caller responsibility',async()=>{
+ const h=setup(),input=new Blob(['image']);let options;
+ h.context.createImageBitmap=async(file,configuration)=>{assert.equal(file,input);options=configuration;return h.bitmap;};
+ assert.equal(await h.app.decodeAvatar(input),h.bitmap);assert.equal(options.imageOrientation,'from-image');
+ assert.equal(h.bitmap.closed,false);assert.equal(h.created.length,0);assert.equal(h.revoked.length,0);
+});
+
+test('bitmap rejection retains the existing supported-image error without retrying Image fallback',async()=>{
+ const h=setup();h.context.createImageBitmap=async()=>{throw Error('decode denied');};
+ h.context.Image=class {constructor(){assert.fail('Bitmap rejection must not introduce a fallback retry');}};
+ await assert.rejects(h.app.decodeAvatar(new Blob()),{message:'Could not read this image. Please choose a supported image.'});
+ assert.equal(h.created.length,0);assert.equal(h.revoked.length,0);
+});
+
+test('Image fallback revokes its URL on decode failure and a throwing src setter',async()=>{
+ for(const failure of ['event','setter']){
+  const h=setup();h.context.createImageBitmap=undefined;
+  h.context.Image=class {set src(value){assert.equal(typeof this.onload,'function');assert.equal(typeof this.onerror,'function');if(failure==='setter')throw Error('src failed');this.onerror(Error('decode failed'));}};
+  await assert.rejects(h.app.decodeAvatar(new Blob()),{message:'Could not read this image. Please choose a supported image.'});
+  assert.deepEqual(h.revoked,['blob:photo-0']);assert.equal(h.created.length,1);
+ }
+});
+
+test('canvas draw and encoder exceptions propagate unchanged without creating draft or upload state',async()=>{
+ for(const stage of ['draw','encode']){
+  const h=setup(),failure=Error('synthetic '+stage);
+  if(stage==='draw')h.context.document.createElement=()=>({getContext:()=>({drawImage(){throw failure;}})});
+  else h.setEncode(()=>{throw failure;});
+  await assert.rejects(h.app.canvasBlob({},20,10),error=>error===failure);
+  assert.equal(h.app.state.draft.files.length,0);assert.equal(h.uploads.length,0);
+ }
+});
+
 test('Storage avatar upload stays JPEG/private and failed profile update removes only the new upload',async()=>{
  const failure={message:'Profile update failed'},uploads=[],removed=[];
  const client={auth:{getUser:async()=>({data:{user:{id:'a'}}})},
@@ -231,5 +266,5 @@ test('private image download uses the existing authenticated buckets and propaga
  await assert.rejects(cloud.imageUrl('a/post/1.jpg'),error=>error===denied);
  await assert.rejects(cloud.imageUrl('avatar:a/1.jpg'),error=>error===denied);
  assert.deepEqual(calls,[{bucket:'post-images',path:'a/post/1.jpg'},{bucket:'avatars',path:'a/1.jpg'}]);
- const cloudSource=fs.readFileSync(new URL('../cloud.js',import.meta.url),'utf8');assert.doesNotMatch(cloudSource,/getPublicUrl|createSignedUrl/);
+ const cloudSource=fs.readFileSync(new URL('../src/cloud.js',import.meta.url),'utf8');assert.doesNotMatch(cloudSource,/getPublicUrl|createSignedUrl/);
 });

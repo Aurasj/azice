@@ -1,3 +1,5 @@
+import { canvasBlob, decodeAvatar } from './src/image-processing.js';
+import { html, fmt, dayISO, initials, brand, activityBellIcon, backBar, photoCard, avatar } from './src/presentation.js';
 import { createDemo } from './demo.js';
 import { createCloud, createRecoveryStorage, isSessionMissingOrInvalid } from './cloud.js';
 const $ = s => document.querySelector(s);
@@ -7,7 +9,7 @@ if (incomingInvite) sessionStorage.setItem('azice_pending_invite', incomingInvit
 const savedInvite = () => sessionStorage.getItem('azice_pending_invite');
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabasePublishableKey);
 // MAJOR.MINOR.FEATURE.PATCH — change intentionally for releases, never per commit.
-const APP_VERSION='0.1.1.0';
+const APP_VERSION='0.1.1.1';
 function parseRecoveryLink(search=location.search,hash=location.hash||''){
  const query=new URLSearchParams(search||''),fragment=new URLSearchParams(hash.replace(/^#/,''));
  const active=query.get('recovery')==='1'||query.get('type')==='recovery'||fragment.get('type')==='recovery';
@@ -326,7 +328,6 @@ function setCurrentUser(user){
 function friendsButtonContent(){
  return `<svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="7" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 20v-2a6 6 0 0 0-3-5"/></svg><span>Friends</span>${state.friends.incoming.length?'<span class="friend-request-dot" aria-hidden="true"></span>':''}`;
 }
-function activityBellIcon(){return '<svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>';}
 function activityButtonContent(){return activityBellIcon()+(state.activity.unread?'<span class="activity-dot" aria-hidden="true"></span>':'');}
 function updateActivityButton(){const button=$('.activity-button');if(!button?.setAttribute)return;button.innerHTML=activityButtonContent();button.setAttribute('aria-label',state.activity.unread?'Activity, unread comments or reactions':'Activity');}
 async function refreshActivity(){
@@ -413,9 +414,6 @@ function refreshOnReturn(){
  returnRefresh=refresh;
  return returnRefresh;
 }
-const html = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt = date => new Date(date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-const dayISO = value => {const d=new Date(value); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const isActive = post => Date.now()-new Date(post.published_at).getTime()<48*HOUR;
 const who = post => post.author_id===state.user?.id ? 'You' : (post.author?.display_name || 'Friend');
 const own = p => p.author_id===state.user?.id;
@@ -674,7 +672,6 @@ async function openFriends(){
  window.scrollTo(0,0);
  $('#friends-title')?.focus({preventScroll:true});
 }
-function brand(){return `<div class="brand">AziCe<span>?</span></div>`;}
 function headerBrand(){return `<div class="header-brand">${brand()}<span class="beta-badge">BETA v${APP_VERSION}</span></div>`;}
 function headerAvatar(){
  const p=state.profile;const path=p?.avatar_path;
@@ -693,10 +690,6 @@ function shell(content, tab='feed'){
   </nav>
  </div>`;
 }
-function initials(name){return html((name||'?').trim().slice(0,1).toUpperCase());}
-function backBar(title, action='profile'){return `<div class="subheader"><button class="icon-btn" data-action="${action}" aria-label="Back">‹</button><h1>${html(title)}</h1></div>`;}
-function photoCard(photo,idx){const path=html(photo.path);return `<button type="button" class="photo-slide" data-action="view-photo" data-path="${path}" aria-label="Open full photo ${idx+1}"><span class="photo-loading" aria-hidden="true">📷</span><img data-private-photo="${path}" alt="Photo ${idx+1}" loading="lazy"></button>`;}
-function avatar(p,cls=''){const path=p?.avatar_path;const src=path?(path.startsWith('data:')?path:(path.startsWith('avatar:')?path:`avatar:${path}`)):null;return `<div class="avatar ${cls}">${src?`<img data-private-photo="${html(src)}" alt="${html(p?.display_name||'User')} avatar">`:initials(p?.display_name)}</div>`;}
 function commentPost(id){
  if(state.view==='post')return state.openedPost?.id===id?state.openedPost:null;
  if(state.view==='feed')return state.feed.find(post=>post.id===id);
@@ -948,13 +941,6 @@ async function startCamera(){
 }
 function attachCamera(){const video=$('#camera-preview');if(video&&state.cameraStream){video.srcObject=state.cameraStream;video.play().catch(()=>{});}}
 function stopCamera(){cameraVersion++;if(state.cameraStream){state.cameraStream.getTracks().forEach(t=>t.stop());state.cameraStream=null;}}
-async function canvasBlob(source,width,height){
- if(!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0)throw Error('Photo dimensions are invalid.');
- // Draw the entire frame proportionally. A fresh canvas JPEG carries no source EXIF/GPS.
- const canvas=document.createElement('canvas'),factor=Math.min(1,1600/Math.max(width,height));canvas.width=Math.max(1,Math.round(width*factor));canvas.height=Math.max(1,Math.round(height*factor));
- const ctx=canvas.getContext('2d');if(!ctx)throw Error('Photo processing is unavailable.');ctx.drawImage(source,0,0,canvas.width,canvas.height);
- return new Promise((resolve,reject)=>canvas.toBlob(b=>b?.type==='image/jpeg'?resolve(b):reject(Error('Could not process photo. Please try again.')),'image/jpeg',.80));
-}
 async function capture(){
  if(capturing)return;
  if(state.draft.files.length>=3)throw Error('You can add up to 3 photos.');
@@ -981,13 +967,6 @@ async function galleryAvatar(file){
   const profile=await api.getMyProfile();if(!task.current()||!profile)return;
   state.profile={...profile,avatar_path:path};showToast('Profile photo updated.');render();
  }catch(error){if(task.current())throw error;}
-}
-async function decodeAvatar(file){
- try{
-  if(typeof createImageBitmap==='function')return await createImageBitmap(file,{imageOrientation:'from-image'});
-  const url=URL.createObjectURL(file),image=new Image();
-  try{await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});return image;}finally{URL.revokeObjectURL(url);}
- }catch{throw Error('Could not read this image. Please choose a supported image.');}
 }
 async function refreshPosts(){
  if(['profile','friendProfile','day'].includes(state.view)){

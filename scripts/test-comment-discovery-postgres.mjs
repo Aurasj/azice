@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 
-if(!process.env.AZICE_TEST_PG_MODULE)throw Error('Set AZICE_TEST_PG_MODULE to a temporary pg driver file. See supabase/COMMENT_DISCOVERY.md.');
+if(!process.env.AZICE_TEST_PG_MODULE)throw Error('Set AZICE_TEST_PG_MODULE to a temporary pg driver file. See docs/backend/comment-discovery.md.');
 const {default:pg}=await import(pathToFileURL(process.env.AZICE_TEST_PG_MODULE).href);
 const settings={host:'127.0.0.1',port:Number(process.env.AZICE_TEST_PG_PORT||55439),user:'azice_test_owner',connectionTimeoutMillis:5000};
 const database=`azice_comment_test_${process.pid}_${Date.now()}`;

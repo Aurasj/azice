@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -42,7 +43,7 @@ function setup(formId,{error=null,username='new_user'}={}){
   window:{AZICE_CONFIG:{},addEventListener(){}},
   document:{querySelector:s=>s==='#app'?root:s==='#toast'?toast:null,querySelectorAll:()=>[],addEventListener:(type,fn)=>{listeners[type]=fn;}}
  });
- vm.runInContext(source+'\nglobalThis.app={state,setCurrentUser,render,setApi:value=>{api=value;}};',context);
+ runAppInContext(source+'\nglobalThis.app={state,setCurrentUser,render,setApi:value=>{api=value;}};',context);
  const app=context.app;app.setApi(api);app.setCurrentUser({id:'user'});app.state.profile=profile;app.state.view=formId==='onboard-form'?'onboard':'editProfile';
  const form={id:formId,dataset:{},values:{display_name:' Updated ',username,bio:' Updated bio ',adult:'on'}};
  return {app,api,root,toast,form,listeners,queries,submit:()=>listeners.submit({target:form,preventDefault(){}})};
