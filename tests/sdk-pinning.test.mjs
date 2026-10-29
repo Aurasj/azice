@@ -20,7 +20,7 @@ test('browser and all three Edge SDK entry points use the reviewed exact version
 test('SDK imports and any build/test package dependencies cannot silently become floating',()=>{
  const files=['app.js','cloud.js','demo.js','index.html'];
  const walk=folder=>{for(const entry of fs.readdirSync(new URL(folder,root),{withFileTypes:true})){if(['node_modules','.temp'].includes(entry.name))continue;const path=folder+'/'+entry.name;if(entry.isDirectory())walk(path);else if(/\.(?:[cm]?js|ts|html|json|toml)$/.test(path))files.push(path);}};
- for(const folder of ['scripts','tests','supabase/functions'])walk(folder);
+ for(const folder of ['scripts','tests','supabase/functions','src'])walk(folder);
  if(fs.existsSync(new URL('package.json',root)))files.push('package.json');
  for(const file of files){
   const source=read(file);for(const reference of refs(source))assert.equal(exact(reference),true,`${file}: SDK reference must use an exact release`);
@@ -44,7 +44,7 @@ test('existing PWA worker leaves the SDK to HTTP caching and retains network-fir
 });
 
 // Optional real-bundle compatibility tests. No test downloads code or contacts a
-// service. Supply a reviewed local artifact as documented in SDK_VERSIONS.md.
+// service. Supply a reviewed local artifact as documented in docs/backend/sdk-versions.md.
 const bundlePath=process.env.AZICE_TEST_SUPABASE_UMD;
 const bundle=bundlePath?fs.readFileSync(bundlePath,'utf8'):null;
 const sdkTest=(name,fn)=>test(name,{skip:!bundle},fn);

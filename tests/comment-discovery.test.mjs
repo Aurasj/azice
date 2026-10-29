@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -32,7 +33,7 @@ function setup(profile={...person}){
    querySelector:s=>s==='#app'?root:s==='#toast'?toast:null,querySelectorAll:()=>[],createElement:makeDialog,
    body:{append(){}},addEventListener:(type,fn)=>{events[type]=fn;}}
  });
- vm.runInContext(source+'\nglobalThis.app={state,setCurrentUser,feedView,handleAction,openCommentAuthor,closeCommentCard,setApi:value=>{api=value;}};',context);
+ runAppInContext(source+'\nglobalThis.app={state,setCurrentUser,feedView,handleAction,openCommentAuthor,closeCommentCard,setApi:value=>{api=value;}};',context);
  const app=context.app;app.setApi(api);app.setCurrentUser({id:'a'});app.state.view='feed';app.state.profile={display_name:'Me'};
  app.state.feed=[{id:'post',author_id:'b',author:{display_name:'Post author'},published_at:new Date().toISOString(),kind:'sober',reason:'Post',comments:[{id:'comment-c',author_id:'c',author_name:'Commenter',body:'Hello',created_at:new Date().toISOString()},{id:'comment-a',author_id:'a',author_name:'Me',body:'Own comment',created_at:new Date().toISOString()}]}];
  app.state.activeComments.add('post');

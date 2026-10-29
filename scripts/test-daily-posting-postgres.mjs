@@ -1,4 +1,4 @@
-// Disposable PostgreSQL engine only; reuses ignored tooling documented in WEB_PUSH.md.
+// Disposable PostgreSQL engine only; uses locked root PGlite tools; see docs/backend/web-push.md.
 import {PGlite} from '@electric-sql/pglite';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';

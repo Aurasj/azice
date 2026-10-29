@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,7 +11,7 @@ function setup(count=0){
  const document={visibilityState:'visible',querySelector:s=>({'#app':root,'#toast':toast,'#daily-post-count':counter,'#daily-post-limit':note,'#daily-post-retry':retry,'[data-action="post-next"]':button}[s]||null),querySelectorAll:()=>[],addEventListener:(type,fn)=>{events[type]=fn;}};
  const api={mode:'cloud',getDailyPostingStatus:async()=>status,createPost:async()=>{publishes++;status={...status,count:status.count+1};},getUser:async()=>({id:'a'}),getNotificationPreferences:async()=>null,getActivity:async()=>({items:[],unread:false}),friendData:async()=>({friends:[],incoming:[],outgoing:[]})};
  const context=vm.createContext({URLSearchParams,Date,Intl,Map,Set,console:{...console,error(){}},navigator:{},location:{search:'',origin:'https://azice.test',protocol:'https:'},document,sessionStorage:{getItem:()=>null,setItem(){}},window:{AZICE_CONFIG:{},scrollTo(){},addEventListener(){}},setTimeout:(fn,ms)=>{timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id)});
- vm.runInContext(source+'\nconfirmInApp=async()=>{globalThis.confirmed();return true;};home=async()=>{state.view="feed";render();};globalThis.a={state,setCurrentUser,refreshDailyPosting,newPostView,handleAction,refreshOnReturn,setApi:v=>{api=v;}};',context);
+ runAppInContext(source+'\nconfirmInApp=async()=>{globalThis.confirmed();return true;};home=async()=>{state.view="feed";render();};globalThis.a={state,setCurrentUser,refreshDailyPosting,newPostView,handleAction,refreshOnReturn,setApi:v=>{api=v;}};',context);
  context.confirmed=()=>{confirmations++;};context.a.setApi(api);context.a.setCurrentUser({id:'a'});context.a.state.profile={id:'a',display_name:'Test'};context.a.state.view='new';context.a.state.draft={kind:'sober',reason:'Valid reason',files:[],step:3};
  return {a:context.a,api,root,toast,counter,note,retry,button,timers,events,document,setStatus:v=>{status=v;},get confirmations(){return confirmations;},get publishes(){return publishes;},publish:()=>context.a.handleAction({dataset:{action:'post-next'},...button,get disabled(){return button.disabled;},set disabled(v){button.disabled=v;}})};
 }

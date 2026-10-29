@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,7 +15,7 @@ function setup(){
  const context=vm.createContext({Blob,URLSearchParams,Intl,Map,Set,Date,console,document,navigator:{},location:{search:'',pathname:'/',origin:'https://azice.test',protocol:'https:'},
   window:{AZICE_CONFIG:{},addEventListener(){},scrollTo(){}},sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},setTimeout:()=>1,clearTimeout(){},
   FormData:class{constructor(form){return Object.entries(form.values);}},createImageBitmap:async()=>{const bitmap={width:600,height:400,closed:false,close(){this.closed=true;}};bitmaps.push(bitmap);return bitmap;}});
- vm.runInContext(source+'\nglobalThis.app={state,setCurrentUser,render,home,openProfile,openFriendProfile,galleryAvatar,refreshPosts,handleAction,setApi:value=>{api=value;}};',context);
+ runAppInContext(source+'\nglobalThis.app={state,setCurrentUser,render,home,openProfile,openFriendProfile,galleryAvatar,refreshPosts,handleAction,setApi:value=>{api=value;}};',context);
  const app=context.app;let saved=profile('A');
  const api={mode:'cloud',getMyProfile:async()=>saved,getHistory:async()=>[],getFeed:async()=>[],getProfile:async id=>profile(id),getProfiles:async()=>[],getActivity:async()=>({items:[],unread:false}),
   saveProfile:async fields=>(saved={...saved,...fields}),saveAvatar:async(file,owner)=>{uploads.push({file,owner});saved={...saved,avatar_path:'new.jpg'};return 'avatar:new.jpg';}};

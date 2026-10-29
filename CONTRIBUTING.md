@@ -38,11 +38,12 @@ npm test
 npm run check
 npm run test:sql
 npm run build
+node scripts/check-doc-links.mjs
 ```
 
 - npm test uses synthetic/mocked backend responses. Four optional real-SDK tests
   explicitly skip unless AZICE_TEST_SUPABASE_UMD points to the hash-verified artifact
-  described in supabase/SDK_VERSIONS.md. They never download/visit a backend.
+  described in docs/backend/sdk-versions.md. They never download/visit a backend.
 - Default branding tests verify the committed master core's decoded-pixel hash,
   icon format/sizing, safe zone and PWA references. They need no assets/logo.png.
   To additionally compare an owner-held original, set AZICE_BRANDING_SOURCE to its
@@ -62,12 +63,40 @@ Production packaging is a maintainer-only offline check: `npm run build:producti
 That output points at production if opened, so do not use it for contributor or
 fork previews. Existing Netlify production builds select the same public profile
 automatically; Netlify previews/branches always use demo. No hosted settings need
-changing for this code path. See OPEN_SOURCE.md for settings still needing review.
+changing for this code path. See docs/open-source-readiness.md for settings still needing review.
 
 GitHub CI acquires dependencies first, then uses a Linux loopback-only network
 namespace for `npm run ci:offline`. That script runs the commands above and checks
 demo packaging; it does not itself configure OS networking when run manually.
-The namespace setup is Linux-specific and needs its first hosted-run verification.
+The Linux setup passed in PR #1 and the production merge CI run; links are in
+[open-source readiness](docs/open-source-readiness.md). This does not prove real
+Storage, native Deno or physical-device behavior.
+
+Use the [documentation index](docs/README.md) to distinguish current guides from
+archived release evidence. Phase 1 module gates remain in [tests](tests/MODULE_TESTING.md).
+
+## Where to work
+
+- [Architecture](docs/ARCHITECTURE.md) maps ownership and trust boundaries.
+  `app.js` remains the stateful UI coordinator. Adapter implementations are in
+  `src/cloud.js` and `src/demo.js`; root files are compatibility exports, not a
+  second implementation. Preserve their public URLs and export/function identity.
+- Presentation, Auth/recovery and image helpers live in `src/`. Keep account,
+  camera and upload lifecycle changes out of independent helpers.
+- `styles.css` is the only production stylesheet. Its later overrides are
+  intentional. CSS property assertions ignore formatting, while the complete
+  ordered snapshot detects selector/declaration/media changes. Update that
+  snapshot only for a reviewed intentional style change, not to hide a regression.
+- Read [verification limits](docs/testing/verification-limits.md), including the
+  pre-existing short Activity fixture result. A local screenshot or PGlite pass
+  is not real-device or hosted-backend verification.
+- Use [synthetic screenshot guidance](docs/screenshots/README.md) for visual
+  evidence. Never attach real users, photos, tokens or personal invitation links;
+  underlying artwork rights still need review even in a screenshot.
+
+Current module documentation supersedes checkpoint-specific paths in archived
+notes. The local refactor has not yet been committed, pushed or deployed; earlier
+PR #1 CI results do not validate an unpublished branch.
 
 ## Pull requests
 

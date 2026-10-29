@@ -1,87 +1,80 @@
-# AziCe? BETA v0.1.1.0 release checklist
+# Deployment and production status
 
-Contributor preparation update: source/default builds now use demo configuration.
-Netlify's existing production context still runs `node scripts/build.mjs` and
-generates the unchanged public values from config.production.json into dist/config.js.
-Previews/branches are demo-only; no hosted setting was changed. Local production
-packaging must now be explicit: `npm run build:production`. Never manually deploy
-the default demo output over production. See CONTRIBUTING.md and OPEN_SOURCE.md.
-The earlier release checklist below is historical; this preparation deploys nothing.
+**Current production:** BETA v0.1.1.0, main at
+`34b4766124d94aece509b444a61fd6cc157a465d`.
+[PR #1](https://github.com/Aurasj/azice/pull/1) completed open-source preparation.
+[Merge CI](https://github.com/Aurasj/azice/actions/runs/40713147522) succeeded.
+Netlify's published production deploy `6ae2103d4d6e571a86722ca6` is ready at that
+commit (read-only metadata verified 2026-10-28). This document deploys nothing.
 
-This is preparation for the **existing** Git-connected Netlify site and Supabase
-backend. No new site, domain, DNS, Auth, SMTP or scheduler setup is needed.
-The owner has authorized frontend publication. Previous frontend baseline:
-1b0e899 / BETA v0.1.0.2. F02/F06 are already applied and verified; delete-account
-v7 is ACTIVE with SDK 2.118.0. No backend redeployment is part of final publication.
+**Prepared locally:** BETA v0.1.1.1. The module/CSS/documentation refactor is local on `refactor/project-structure`,
+not a new hosted release or CI run. [Architecture](docs/ARCHITECTURE.md) describes
+the current local layout; [publication decisions](docs/open-source-readiness.md)
+must be reviewed before a branch push or visibility change.
 
-## Review gates
+## Existing build contract
 
-1. Review the intended diff against 1b0e899: F01–F07, R02, F08 docs, tests and two
-   forward-only migrations. Preserve the five unrelated untracked files identified
-   in the release report; do not stage them.
-2. Read [MIGRATION_STATUS.md](supabase/MIGRATION_STATUS.md). Source files/manual
-   SQL receipts do not establish a matching migration ledger. Do not bulk-push
-   migrations, replay schema.sql, insert history rows or repair history.
-3. Record unresolved R03 and missing real F03 Storage/native Deno checks.
-   The owner stopped further R03 integration testing for this beta; this does not
-   close R03. The owner explicitly accepted the unresolved risk for this beta.
+- Netlify command: `node scripts/build.mjs`; publish directory: **dist**.
+- Its production context generates dist/config.js from the unchanged public
+  config.production.json. Privileged keys never belong in browser configuration.
+- Local `npm run build` and Netlify preview/branch contexts generate demo output.
+  Use `npm run build:production` only for explicit production packaging checks;
+  do not open that output as a contributor sandbox. Restore demo output afterward.
+- The explicit build allowlist excludes docs, tests, SQL, Edge source, local
+  configuration, original logo/master, tooling and credentials. Never publish the
+  repository root or commit dist. PWA identity and worker registration stay intact.
 
-## Backend first — completed historical checklist; do not repeat
+## Hosted settings and approval boundary
 
-The following backend steps are already complete. Read-only release preflight
-confirmed the effective changes; they are not pending frontend-release actions.
+The owner reviewed main as the production branch, production-branch-only deploys
+and disabled Deploy Previews. GitHub token/fork settings and remaining public-release
+checks are recorded in [open-source readiness](docs/open-source-readiness.md).
+Do not assume future branch/PR pushes are harmless if those settings change.
 
-1. Read-only verify definitions, owners, grants and baseline prerequisites; arrange
-   a backup/recovery point. Stop on unexpected differences. Do not reapply existing
-   production changes merely because they exist locally.
-2. Apply **only** supabase/migrations/20261024171206_restrict_friendship_helper.sql
-   (F02), once as the reviewed owner. Verify anon/authenticated arbitrary-pair
-   probing is rejected and authorized RLS/service-role operations still work.
-3. Apply **only** supabase/migrations/20261024174419_bound_activity_unread.sql
-   (F06), once as the reviewed owner. Verify newest-50 items/unread agree and
-   visible events can be marked read. Both migrations reject incompatible
-   owner/ACL/policy prerequisites.
-4. Redeploy **only delete-account** from reviewed source to activate R02's exact
-   SDK **2.118.0** import. Preserve existing JWT configuration/runtime credentials.
-   Push functions already pin that version and are unchanged. Do not redeploy
-   them or change secrets, Vault, Cron, RLS or Storage configuration.
-   This redeployment pins a dependency; it does **not** fix R03.
+Future commits, pushes, merges and releases require their own approval. Existing
+Git-connected Netlify publication follows an approved main update; no manual deploy
+trigger, new site, DNS change or backend operation is required by this refactor.
+Verify both GitHub checks and Netlify's published commit after any approved release;
+a push or CI success alone is not proof of deployment.
 
-## Frontend last — future separately approved publication
+## Verification before a separately approved release
 
-1. Run the full JavaScript suite with the optional pinned SDK artifact supplied
-   ([instructions](supabase/SDK_VERSIONS.md)), available SQL regressions, syntax
-   checks, production build and git diff --check.
-2. **node scripts/build.mjs** recreates **dist/**. Inspect its public-only contents:
-   index.html, app.js, cloud.js, demo.js, config.js, styles.css, sw.js,
-   **push-sw.js**, manifest.webmanifest and runtime assets/.
-   Original logo/master, tests, docs, SQL, Edge source, .env files and tooling
-   must not be published. Never upload the repository root or commit dist/.
-3. After explicit commit/push approval, stage only reviewed files; run
-   git diff --cached --check and inspect the staged list. Publish through the
-   approved branch/main workflow; never force-push.
-4. Existing netlify.toml runs **node scripts/build.mjs** and publishes **dist**.
-   Let the existing Git integration deploy after the approved merge/push.
-   No manual Netlify trigger, new site or DNS change is required. A successful
-   push is not proof of a successful Netlify build/deployment.
-5. Verify the deployed commit; reload online and confirm **BETA v0.1.1.0** and
-   the exact browser SDK URL. Open/offline clients may keep older code until an
-   online reload. Do not change PWA identity/worker architecture to force a badge.
-   Confirm nonpublic repository paths are unavailable on the deployed site.
-6. With approved test accounts, smoke-test login/recovery/onboarding, account
-   switching, Profile/avatar edits, Feed return refresh/revocation, comments,
-   Activity, posting cap/cleanup, Friends and push preferences. Device and real
-   Storage checks are separate from mocks/emulation. Normal account deletion is
-   not proof of R03 concurrency safety or complete erasure.
+From the repository root:
 
-## Rollback and stop conditions
+```sh
+npm ci --ignore-scripts
+npm test
+npm run check
+npm run test:sql
+npm run build
+node scripts/check-demo-build.mjs
+npm run build:production
+npm run build
+node scripts/check-demo-build.mjs
+node scripts/check-doc-links.mjs
+git diff --check
+```
 
-A SQL error rolls back that migration; F02/F06 are separate transactions, not a
-combined atomic deployment. If F06 fails after F02 commits, record that state and
-stop for review. Never remove applied history or replay old schema.
+Compare generated production public settings with the approved profile without
+logging values. Inspect the public-only package and retain a known-good frontend
+artifact/commit for reviewed recovery. Do not reset user data as a release shortcut.
+For module/offline/browser gates see [Phase 1 testing](tests/MODULE_TESTING.md)
+and [current verification limits](docs/testing/verification-limits.md).
+Mocks, PGlite and syntax transpilation do not prove physical devices, native Deno,
+real Storage cleanup or authenticated offline behavior.
 
-Any reversal of committed SQL needs a separately reviewed new forward migration.
-Restoring F02's browser EXECUTE access reopens disclosure; do not do it as an
-automatic rollback. Restoring F06's old body restores stuck-unread behavior.
-Review frontend rollback compatibility with the applied backend. Do not reset
-data, receipts, preferences, quotas or Storage objects as a release shortcut.
+## Backend state — do not repeat completed operations
+
+F02 then F06 are already applied and verified. delete-account v7 is active with
+Supabase SDK 2.118.0. No SQL, Edge, secrets, RLS, Storage or scheduler change is
+needed for this frontend/module/documentation refactor. [Migration status](docs/backend/migration-status.md)
+is an evidence inventory, not a fabricated or repaired Supabase migration ledger.
+Never bulk-apply repository migrations or replay supabase/schema.sql on production.
+
+R03 remains unresolved and accepted for this beta; physical leakage is unconfirmed.
+Further investigation is stopped. [Security policy](SECURITY.md) remains authoritative.
+
+The complete [earlier deployment checklist](docs/archive/beta-v0.1.1.0-deployment-checklist.md)
+and [stabilization report](docs/archive/beta-v0.1.1.0-stabilization.md) are historical
+records, including original approvals, rollout and rollback considerations. They
+are not instructions to repeat backend deployment or change production today.

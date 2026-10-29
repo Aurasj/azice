@@ -1,12 +1,13 @@
+import {compactCSS} from './fixtures/css-contract.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const read=name=>fs.readFileSync(new URL(`../${name}`,import.meta.url),'utf8');
-const index=read('index.html'),css=read('styles.css');
+const index=read('index.html'),rawCSS=read('styles.css'),css=compactCSS(rawCSS);
 // The browser fixture checks actual geometry. These guards cover the viewport contract
 // and inset ownership even on Node installations without a browser/CSS engine.
-const safe=css.slice(css.indexOf('/* Each viewport boundary owns its insets;')).replace(/\/\*[\s\S]*?\*\//g,'');
+const safe=compactCSS(rawCSS.slice(rawCSS.indexOf('/* Each viewport boundary owns its insets;')));
 const rule=selector=>[...safe.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(match=>match[1].trim()===selector).map(match=>match[2]).join(';');
 
 test('iOS viewport covers the display without disabling zoom, in browser and standalone mode',()=>{

@@ -1,6 +1,6 @@
 // Cache only the public app shell. Private user data and photos are never cached here.
-const CACHE = 'azice-shell-v2-mascot';
-const ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/cloud.js', '/demo.js', '/config.js', '/push-sw.js', '/manifest.webmanifest', '/assets/azice-pwa-192-v2.png', '/assets/azice-pwa-512-v2.png', '/assets/azice-maskable-512-v2.png', '/assets/azice-apple-touch-180-v2.png', '/assets/azice-favicon-16-v2.png', '/assets/azice-favicon-32-v2.png', '/assets/demo-beer.svg'];
+const CACHE = 'azice-shell-v7-cloud-adapter';
+const ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/src/presentation.js', '/src/auth-helpers.js', '/src/image-processing.js', '/cloud.js', '/src/cloud.js', '/demo.js', '/src/demo.js', '/config.js', '/push-sw.js', '/manifest.webmanifest', '/assets/azice-pwa-192-v2.png', '/assets/azice-pwa-512-v2.png', '/assets/azice-maskable-512-v2.png', '/assets/azice-apple-touch-180-v2.png', '/assets/azice-favicon-16-v2.png', '/assets/azice-favicon-32-v2.png', '/assets/demo-beer.svg'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -11,13 +12,13 @@ function setup({search='',hash='',session=new Map(),user=null,configured=false}=
  const api={mode:'cloud',getUser:async()=>{primaryReads++;return user;},onAuthChange:cb=>{authCallback=cb;return {};},getMyProfile:async()=>({id:user?.id,display_name:'Existing'}),getFeed:async()=>[],friendData:async()=>({friends:[],incoming:[],outgoing:[]}),getActivity:async()=>({items:[],unread:false}),getInvite:async()=>'invite',requestPasswordReset:async()=>{},beginPasswordRecovery:async()=>({id:'recovered-A'}),updateRecoveredPassword:async()=>{},endPasswordRecovery:async()=>{},signIn:async()=>({id:'normal'}),signUp:async()=>({id:'normal'})};
  const window={AZICE_CONFIG:configured?{supabaseUrl:'https://example.supabase.co',supabasePublishableKey:'public-test'}:{},history:{state:{existing:true},replaceState(state,title,path){urls.push(path);const parsed=new URL(path,location.origin);location.search=parsed.search;location.hash=parsed.hash;}},addEventListener:(t,fn)=>{events[t]=fn;},scrollTo(){}};
  const context=vm.createContext({URLSearchParams,URL,Intl,Map,Set,Date,Promise,console,createCloud,createRecoveryStorage,location,window,navigator:{},sessionStorage:storage(session),localStorage:storage(shared),setTimeout:()=>1,clearTimeout(){},FormData:class{constructor(form){return Object.entries(form.values||{});}},document:{visibilityState:'visible',querySelector:s=>s==='#app'?root:s==='#toast'?toast:null,querySelectorAll:()=>[],addEventListener:(t,fn)=>{events[t]=fn;}}});
- vm.runInContext(source+'\nglobalThis.a={state,recovery,parseRecoveryLink,headerBrand,authView,passwordRecoveryView,boot,home,handleAction,refreshOnReturn,setCurrentUser,setApi:value=>{api=value;}};',context);context.a.setApi(api);
+ runAppInContext(source+'\nglobalThis.a={state,recovery,parseRecoveryLink,headerBrand,authView,passwordRecoveryView,boot,home,handleAction,refreshOnReturn,setCurrentUser,setApi:value=>{api=value;}};',context);context.a.setApi(api);
  return {a:context.a,api,context,root,toast,events,urls,session,shared,location,get primaryReads(){return primaryReads;},emit:(next,event='SIGNED_IN')=>authCallback?.(next,event),submit:(id,values)=>events.submit({preventDefault(){},target:{id,values}})};
 }
 
 test('header version is one explicit four-part deployed-code constant, independent of browser settings',()=>{
- const h=setup();h.shared.set('appVersion','999.0.0.0');assert.match(h.a.headerBrand(),/BETA v0\.1\.1\.0/);
- assert.equal((source.match(/0\.1\.1\.0/g)||[]).length,1);assert.match(source,/const APP_VERSION='\d+\.\d+\.\d+\.\d+'/);
+ const h=setup();h.shared.set('appVersion','999.0.0.0');assert.match(h.a.headerBrand(),/BETA v0\.1\.1\.1/);
+ assert.equal((source.match(/0\.1\.1\.1/g)||[]).length,1);assert.match(source,/const APP_VERSION='\d+\.\d+\.\d+\.\d+'/);
  assert.match(h.a.authView(),/Forgot password\?/);h.a.state.authSignUp=true;assert.doesNotMatch(h.a.authView(),/Forgot password\?/);
 });
 

@@ -1,0 +1,50 @@
+# Daily posting cap — existing release prerequisite
+
+> **Current reading note:** The daily cap is already part of BETA v0.1.1.0. Preserve existing data/timezone behavior; this guide does not authorize migration replay.
+> Commands assume the repository root. See the [documentation index](../README.md)
+> and [deployment status](../../DEPLOY.md) before any operator action.
+
+
+`supabase/migrations/20261024112734_daily_posting_cap.sql` is in the owner-designated
+production source baseline. No separate exact-file SQL apply receipt is retained;
+Git presence is not proof of application. Before release verify the live cap/helper
+definitions read-only; do not automatically reapply. See [migration-status.md](migration-status.md).
+F02 then F06 are already applied for BETA v0.1.1.0; no SQL is pending for final
+frontend publication. The review/tests below are historical;
+native cap-concurrency results are recorded separately in ../testing/postgres.md.
+Never edit applied files or replay schema.sql on an existing database.
+
+The cap is **three published posts per account per configured local calendar day**, shared by `drank` and `sober`. Drafts and historical posts outside that day do not count. Existing posts in the current day count immediately; accounts already over three are preserved and cannot publish again that day. The UI shows at most “3 of 3 today” for those legacy accounts. Feed/history query windows and historical data are unchanged.
+
+## Timezone and reset
+
+The existing `notification_preferences.timezone` is the sole configured timezone. Existing values are authoritative, even when a device reports a different timezone or notifications are off. `get_daily_posting_status(text)` accepts only a timezone hint, never an author ID. If no preferences row exists, it initializes the timezone from the browser's IANA timezone and leaves all notification consent/reminder defaults OFF. Status never overwrites an existing saved timezone. A direct publisher with no configured timezone must initialize it first; the backend fails closed rather than silently using server UTC. The updated Create Post flow always initializes first. Operators should verify legacy saved UTC values represent the intended configured timezone before rollout; this migration does not guess or silently rewrite them.
+
+The helper calculates midnight and next midnight separately in the saved timezone, so DST days may contain 23 or 25 hours. The publishing timestamp is captured with `clock_timestamp()` after acquiring the timezone row lock, avoiding transaction-start timestamps charging a new-day publication to yesterday. UI timers use the server's `reset_at - server_now` duration rather than the device clock, refresh once at midnight while Create Post is open, and refresh on return/focus and before/after publishing. There is no polling, new schedule or timezone picker. A timezone change on another device is reflected on return or the next pre-publication check.
+
+## Atomicity, authorization and cleanup
+
+The migration replaces only `public.publish_post(uuid)`, retaining its signature, owner and existing EXECUTE ACLs and hardening its search path to empty. Owned-draft authorization, reason constraints, photo-count and actual private Storage-object verification remain unchanged. The slot reservation occurs after photo validation and in the same transaction as the existing published-status update. Failure rolls back the reservation and publication together. Existing source/push triggers observe only successful publication.
+
+One private `azice_private.daily_post_usage` row per account stores the last local day/timezone and usage. The upsert's WHERE predicate enforces the ceiling on the conflicting row's current value, rather than relying only on a potentially stale count. The saved timezone row is also locked for the transaction, coordinating with existing preference changes. The count reconciles existing published rows using the existing `(author_id,published_at)` index. Under stronger isolation, conflicting writes can abort with SQLSTATE `40001`; the UI refreshes and displays the cap message or a retry message. See [PostgreSQL ON CONFLICT](https://www.postgresql.org/docs/current/sql-insert.html) and [transaction isolation](https://www.postgresql.org/docs/current/transaction-iso.html).
+
+The new status RPC requires an authenticated existing profile and returns only that caller's count, day, timezone, limit, next reset and server timestamp. Its UUID-taking helper and usage table are private, with RLS and no browser policies/grants. Hostile default grants are removed only from new objects. Existing post, photo, Storage and profile policies are untouched; ordinary clients cannot insert published rows or directly update drafts to published. Privileged administrators can still bypass application rules with direct SQL imports; this cap governs the existing authorized publish RPC. Usage cascades on account deletion. Published posts remain immutable for ordinary users; privileged deletion does not restore already consumed slots that day.
+
+The frontend pre-check avoids uploading when the refreshed cap is already reached. If a competing publication fills the last slot during upload/confirmation, the publish RPC rejects with `P0001 / DAILY_POST_LIMIT`. Existing `cloud.js` cleanup removes uploaded draft photos and deletes the failed draft, while the UI retains the local reason/photos for a later retry. Posting permission is not inferred from Feed length or capped history queries. A failed counter load disables publishing and exposes Retry.
+
+The existing timezone preference can be changed by an authenticated user. This product rule is a calendar-day cap, not a rolling 24-hour anti-abuse quota: changing a configured timezone may change the current day's membership. No timezone-change restrictions are introduced.
+
+## Verification and limitations
+
+Run the complete JavaScript suite, `scripts/test-daily-posting-postgres.mjs`, existing PostgreSQL runners, syntax checks and production build. The new PostgreSQL runner applies the existing migration chain in disposable PGlite and covers existing counts 0–3, a legacy over-cap account, both post types, repeated/foreign drafts, competing transaction submissions, Bucharest midnight, fractional offsets, DST, authorization/RLS, invalid photos/reasons, rollback and account deletion. The fake clock exists only in the disposable engine.
+
+PGlite serializes transactions: the competing-submission test proves outcomes but **does not reproduce overlapping native PostgreSQL sessions**. `psql`, `postgres` and Docker were not found on PATH; no native server was started. Before production approval, test in isolated native staging with two published posts and two valid owned drafts:
+
+1. Initialize the test user's configured timezone through Create Post. Session A: begin, authenticate as the test user, publish draft A and leave the transaction open.
+2. Session B: begin as the same user, publish draft B; it must wait. Commit A: B must reject with `DAILY_POST_LIMIT` and remain a draft. Roll back B. Verify only three posts were published and only three slots consumed.
+3. Repeat with A rolled back: B may publish the third post. Repeat at REPEATABLE READ/SERIALIZABLE with snapshots taken before A commits; a serialization failure is acceptable, a fourth publication is not.
+4. Confirm a failed photo verification consumes no slot, rejected uploads clean up, and local-midnight reset works in at least two IANA zones. Confirm authenticated direct published INSERT/UPDATE attempts remain denied. Test two browser/device submissions and app resume across midnight.
+
+No remote SQL, Edge Function, secret, Cron, commit, push or deployment is performed here. After approval: back up/review the exact migration in staging, apply only this migration as the existing BYPASSRLS publish owner, verify RPC permissions and the native concurrency cases, then publish the frontend. Existing frontend clients still receive backend enforcement; clients without a configured timezone must reload the updated Create Post flow to initialize it. Coordinate frontend rollout accordingly. Updated clients provide the counter and friendly errors. No automatic post deletion/backfill occurs. Rollback requires a separately reviewed forward migration restoring the prior publish body and removing only the new RPC/helper/table if desired; never delete real posts or replay the original schema.
+
+Local results: 257 JavaScript tests passed; 34 JavaScript syntax checks and both existing Edge TypeScript syntax transpilation checks passed; production build and whitespace checks passed. All 50 PostgreSQL-engine regression groups passed: 11 daily-cap groups plus 7 username requests, 6 24/7 Push, 16 historical Push and 10 Activity groups. No real-device, hosted Supabase or overlapping native PostgreSQL session test was performed.

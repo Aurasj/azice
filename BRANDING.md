@@ -30,10 +30,16 @@ exclusivity or a third-party rights clearance. Derived exports remain reserved.
 | `assets/azice-favicon-16-v2.png`, `assets/azice-favicon-32-v2.png` | Favicon exports from the master. |
 | `assets/icon-192.png`, `assets/icon-512.png` | Legacy AC? graphics, present in the initial starter commit; origin/rights still need owner confirmation. |
 | `assets/demo-beer.svg` | Inline vector demo illustration, present in the initial starter commit; origin/rights still need owner confirmation. No external image/font references were found in the SVG. |
+| `docs/screenshots/*.png` | Proposed real local-demo captures. The Feed image depicts `assets/demo-beer.svg`; capture provenance does not clear the underlying artwork. Owner selection/publication review is pending. |
 
 The legacy/demo graphics are also excluded from MIT pending that review. A Git
 commit establishes when a file entered this repository, not its authorship or
 rights. Do not infer clearance from the absence of a watermark or attribution.
+
+[Screenshot provenance](docs/screenshots/README.md) records synthetic data and
+production isolation. MIT licensing of documentation text/source does not grant
+additional rights to depicted official branding or uncleared artwork. The existing
+LICENSE scope is unchanged; no registered-mark or exclusive-copyright claim is added.
 
 ## Creating your own distribution
 
@@ -41,7 +47,8 @@ rights. Do not infer clearance from the absence of a watermark or attribution.
    a factual reference such as "based on AziCe?" must not imply endorsement.
 2. Replace the reserved artwork with graphics you may distribute. Keep compatible
    sizes/paths or update references in `index.html`, `manifest.webmanifest`,
-   `sw.js`, `push-sw.js` and `demo.js`. Check any other asset references too.
+   `sw.js`, `push-sw.js` and [src/demo.js](src/demo.js). The root `demo.js`
+   remains a compatibility entry point. Check any other asset references too.
    Replace the demo illustration and legacy icons as well as the mascot exports;
    omit unused authoring material from your distribution.
 3. For a separate app, choose your own manifest name, identity, start URL/scope,
@@ -52,13 +59,16 @@ rights. Do not infer clearance from the absence of a watermark or attribution.
    artwork. Preserve dimension, opacity, safe-zone, caching and packaging tests;
    do not simply remove meaningful checks. Inspect icons at home-screen sizes.
 
+See the [documentation index](docs/README.md) for test and deployment guidance.
+
 ## Existing asset checks
 
 The master is an opaque 600×600 square. Standard exports are 192/512px, maskable
 512px, Apple 180px and favicons 16/32px. Platform PNGs are opaque RGB, with no baked
 rounded mask or white corners. The maskable mascot fits the central safe circle.
 Builds exclude the original source and editing master; legacy icons remain for
-older installations. No asset bytes or runtime references change in this update.
+older installations. This documentation/screenshot work changes no runtime artwork
+bytes or references.
 
 Run `node --test tests/branding.test.mjs`: default tests pin the committed master's
 203,253-pixel protected core and verify exports, safe zone and runtime references.

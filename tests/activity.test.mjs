@@ -1,3 +1,4 @@
+import {runAppInContext} from './fixtures/app-vm.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,7 +15,7 @@ function setup(items=[]){
   sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},setTimeout:()=>1,clearTimeout(){},
   document:{visibilityState:'visible',querySelector:s=>s==='#app'?root:s==='#toast'?toast:s==='.activity-button'?bell:s==='#activity-title'?{focus(){}}:null,querySelectorAll:()=>[],addEventListener:(type,fn)=>{events[type]=fn;}},
   window:{AZICE_CONFIG:{},scrollTo(){},addEventListener(){}}});
- vm.runInContext(source+'\nglobalThis.app={state,setCurrentUser,refreshActivity,openActivity,openActivityPost,activityView,feedView,home,handleAction,refreshOnReturn,render,setApi:v=>{api=v;}};',context);
+ runAppInContext(source+'\nglobalThis.app={state,setCurrentUser,refreshActivity,openActivity,openActivityPost,activityView,feedView,home,handleAction,refreshOnReturn,render,setApi:v=>{api=v;}};',context);
  const app=context.app;app.setApi(api);app.setCurrentUser(user);app.state.profile={id:'me',display_name:'Me'};app.state.view='feed';
  return {app,api,context,root,toast,bell,marks,reads,events,setData:items=>{data=structuredClone(items);},setUser:value=>{user=value;}};
 }

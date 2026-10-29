@@ -1,8 +1,10 @@
 import http from 'node:http';
 import fs from 'node:fs';
+import {serveModuleFixture} from './public-modules.mjs';
 // Optional browser fixture: synthetic images only, no config, Supabase or service worker.
 // Four image shapes intentionally exercise rendering; camera capture still caps posts at three.
-const source=fs.readFileSync(new URL('../../app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/\(async\(\)=>\{\s*state.view='loading';render\(\);await boot\(\);\s*\}\)\(\);\s*$/,'').replace(/^if\('serviceWorker'.*$/gm,'');
+const imageImport="import { canvasBlob, decodeAvatar } from '/src/image-processing.js';\n";
+const source=imageImport+"import { html, fmt, dayISO, initials, brand, activityBellIcon, backBar, photoCard, avatar } from '/src/presentation.js';\n"+fs.readFileSync(new URL('../../app.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/\(async\(\)=>\{\s*state.view='loading';render\(\);await boot\(\);\s*\}\)\(\);\s*$/,'').replace(/^if\('serviceWorker'.*$/gm,'');
 const fixture=`
 api={mode:'demo',getUser:async()=>({id:'test'}),friendData:async()=>({friends:[],incoming:[],outgoing:[]}),imageUrl:async path=>path};
 setCurrentUser({id:'test'});state.profile={id:'test',display_name:'Test User',username:'test'};state.friendsLoaded=true;
@@ -35,8 +37,24 @@ const app1=new Uint8Array(payload.length+4);app1.set([255,225,(payload.length+2)
 const metadataSource=new Blob([input.slice(0,2),app1,input.slice(2)],{type:'image/jpeg'}),url=URL.createObjectURL(metadataSource),image=new Image();
 image.src=url;await image.decode();const stripped=await canvasBlob(image,image.naturalWidth,image.naturalHeight);URL.revokeObjectURL(url);
 const encoded=new Uint8Array(await stripped.arrayBuffer());const hasExif=bytes=>bytes.some((v,i)=>v===69&&bytes[i+1]===120&&bytes[i+2]===105&&bytes[i+3]===102);
+// Exercise both real decoder paths with a synthetic EXIF orientation=6 JPEG.
+const orientation=new Uint8Array(26),orientationView=new DataView(orientation.buffer);
+orientation.set([73,73,42,0,8,0,0,0]);orientationView.setUint16(8,1,true);orientationView.setUint16(10,0x112,true);orientationView.setUint16(12,3,true);orientationView.setUint32(14,1,true);orientationView.setUint16(18,6,true);
+const orientationPayload=new Uint8Array(6+orientation.length);orientationPayload.set([69,120,105,102,0,0]);orientationPayload.set(orientation,6);
+const orientationSegment=new Uint8Array(orientationPayload.length+4);orientationSegment.set([255,225,(orientationPayload.length+2)>>8,(orientationPayload.length+2)&255]);orientationSegment.set(orientationPayload,4);
+const orientedSource=new Blob([input.slice(0,2),orientationSegment,input.slice(2)],{type:'image/jpeg'});
+const bitmap=await decodeAvatar(orientedSource),bitmapSize=[bitmap.width,bitmap.height];bitmap.close();
+const originalBitmap=window.createImageBitmap,originalCreate=URL.createObjectURL,originalRevoke=URL.revokeObjectURL,decodeURLs=[],revokedDecodeURLs=[];
+let fallbackSize,fallbackError;
+try{
+ window.createImageBitmap=undefined;
+ URL.createObjectURL=file=>{const result=originalCreate.call(URL,file);decodeURLs.push(result);return result;};
+ URL.revokeObjectURL=url=>{revokedDecodeURLs.push(url);originalRevoke.call(URL,url);};
+ const fallback=await decodeAvatar(orientedSource);fallbackSize=[fallback.width,fallback.height];
+ try{await decodeAvatar(new Blob(['not a JPEG'],{type:'image/jpeg'}));}catch(error){fallbackError=error.message;}
+}finally{window.createImageBitmap=originalBitmap;URL.createObjectURL=originalCreate;URL.revokeObjectURL=originalRevoke;}
 const report=document.createElement('pre');report.id='browser-results';report.style='margin:20px 20px 130px;white-space:pre-wrap;font-size:12px';
-report.textContent=JSON.stringify({results,metadata:{inputEXIFGPS:hasExif(new Uint8Array(await metadataSource.arrayBuffer())),outputEXIF:hasExif(encoded),jpeg:encoded[0]===255&&encoded[1]===216}},null,2);document.body.append(report);
+report.textContent=JSON.stringify({results,metadata:{inputEXIFGPS:hasExif(new Uint8Array(await metadataSource.arrayBuffer())),outputEXIF:hasExif(encoded),jpeg:encoded[0]===255&&encoded[1]===216},decoding:{bitmapSize,fallbackSize,fallbackError,temporaryURLs:decodeURLs.length,revokedURLs:revokedDecodeURLs.length,allRevoked:decodeURLs.every(url=>revokedDecodeURLs.includes(url))}},null,2);document.body.append(report);
 `;
 const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AziCe? isolated photo check</title><link rel="stylesheet" href="/styles.css"></head><body><div id="app"></div><div id="toast" hidden></div><script type="module">${source}\n${fixture}</script></body></html>`;
-http.createServer((req,res)=>{if(req.url==='/styles.css'){res.setHeader('Content-Type','text/css');res.end(fs.readFileSync(new URL('../../styles.css',import.meta.url)));}else if(req.url.startsWith('/?')||req.url==='/'){res.setHeader('Content-Type','text/html');res.end(html);}else{res.statusCode=404;res.end();}}).listen(5197,'127.0.0.1',()=>console.log('Isolated photo check: http://localhost:5197'));
+http.createServer((req,res)=>{if(serveModuleFixture(req,res))return;if(req.url==='/styles.css'){res.setHeader('Content-Type','text/css');res.end(fs.readFileSync(new URL('../../styles.css',import.meta.url)));}else if(req.url.startsWith('/?')||req.url==='/'){res.setHeader('Content-Type','text/html');res.end(html);}else{res.statusCode=404;res.end();}}).listen(5197,'127.0.0.1',()=>console.log('Isolated photo check: http://localhost:5197'));

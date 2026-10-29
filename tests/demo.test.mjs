@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDemo } from '../demo.js';
+import * as implementation from '../src/demo.js';
+import * as compatibility from '../demo.js';
+
+test('demo: legacy entry and relocated module preserve export surface and factory identity',()=>{
+ assert.deepEqual(Object.keys(compatibility),['createDemo']);assert.deepEqual(Object.keys(implementation),['createDemo']);
+ assert.equal(createDemo,implementation.createDemo);assert.equal(compatibility.createDemo,implementation.createDemo);
+});
 
 const storage = new Map();
 globalThis.localStorage = {

@@ -99,7 +99,7 @@ try{
   assert.equal((await as(B,'select bio from public.profiles where id=$1',[A]))[0].bio,'Updated private bio');
   assert.equal((await as(C,"update public.profiles set bio='Unauthorized' where id=$1 returning id",[A])).length,0);
   await as(A,"select public.get_daily_posting_status('UTC')");
-  // Match cloud.js: client supplies the UUID and inserts without RETURNING.
+  // Match src/cloud.js: client supplies the UUID and inserts without RETURNING.
   const draft=crypto.randomUUID();await as(A,"insert into public.posts(id,author_id,kind,reason) values($1,$2,'sober','Another valid post')",[draft,A]);
   await as(A,'select public.publish_post($1)',[draft]);
   assert.equal((await as(B,'select id from public.posts where id=$1',[draft])).length,1);
