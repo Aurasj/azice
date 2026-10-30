@@ -9,8 +9,7 @@ real authentication, daily posts and photos, reactions, comments, profiles and a
 personal calendar. Check-ins support both “I Drank” and “I Didn't Drink,” without
 streaks, rankings or pressure to consume alcohol.
 
-Production runs **BETA v0.1.1.1** at `edf1427c9`. The A01–A04 stabilization patch
-on this branch is prepared as **BETA v0.1.1.2**, local and unreleased. [Deployment status](DEPLOY.md).
+Production runs **BETA v0.1.1.2** at `9a5575527`, including the A01–A04 stabilization fixes. [Deployment status](DEPLOY.md).
 
 The live application uses production services. For development and evaluation,
 use the isolated local demo below; it uses synthetic data and no production account.
