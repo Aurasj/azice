@@ -1,10 +1,10 @@
 # Security policy
 
-**Production:** BETA v0.1.1.1 at `edf1427c9daa3080600ebfeb2a6f71ee8957cc88`.
-The A01–A04 stabilization patch is local and unreleased.
+**Production:** BETA v0.1.1.2 at `9a5575527a902804b34aa9c16d7f9421066d3a7c`.
+The A01–A04 stabilization fixes are deployed.
 
 This beta is not a guarantee of complete privacy or production readiness. The
-latest published beta (currently BETA v0.1.1.1) is the maintenance target; older
+latest published beta (currently BETA v0.1.1.2) is the maintenance target; older
 versions have no separate security-support commitment.
 
 ## Reporting

@@ -12,7 +12,7 @@ confirmed. The earlier investigation/release-blocker recommendation below is
 retained as historical evidence, not a claim that a production leak occurred or
 that a fix was implemented. The beta release decision accepts this residual risk for
 the beta; the limits in r03-local-integration-attempt.md still apply. Historical v0.1.0.3
-references describe prior runs. Production is v0.1.1.1; the local stabilization patch is unreleased. The accepted risk remains unresolved.
+references describe prior runs. Production is v0.1.1.2 at `9a5575527`; the A01–A04 stabilization patch is deployed. The accepted R03 risk remains unresolved.
 
 ## Decision and scope
 

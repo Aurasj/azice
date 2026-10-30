@@ -1,11 +1,11 @@
 # Open-source readiness — current status
 
-**Production:** BETA v0.1.1.1 at `edf1427c9daa3080600ebfeb2a6f71ee8957cc88`.
-The A01–A04 stabilization patch is prepared as **BETA v0.1.1.2**, local and unreleased.
+**Production:** BETA v0.1.1.2 at `9a5575527a902804b34aa9c16d7f9421066d3a7c`.
+The A01–A04 stabilization fixes were merged in PR #3; Netlify production deploy `6ae414361d64556cb9af90d8` is ready.
 
 This guide applies to the existing **private** Aurasj/azice repository and
-production BETA v0.1.1.1 at main `edf1427`. Local refactoring/documentation does not authorize publication,
-deployment, backend changes or further R03 investigation.
+production BETA v0.1.1.2 at main `9a5575527`. Documentation maintenance does not authorize repository visibility changes,
+backend changes or further R03 investigation.
 
 ## Completed preparation
 

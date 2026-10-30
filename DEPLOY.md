@@ -1,7 +1,7 @@
 # Deployment and production status
 
-**Production:** BETA v0.1.1.1 at `edf1427c9daa3080600ebfeb2a6f71ee8957cc88`.
-The A01–A04 stabilization patch is prepared as **BETA v0.1.1.2**, local and unreleased.
+**Production:** BETA v0.1.1.2 at `9a5575527a902804b34aa9c16d7f9421066d3a7c`.
+The A01–A04 stabilization fixes were merged through PR #3 and deployed via Netlify production deploy `6ae414361d64556cb9af90d8`.
 
 
 [PR #2](https://github.com/Aurasj/azice/pull/2) deployed the refactor. Its
