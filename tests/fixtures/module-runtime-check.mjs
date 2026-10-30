@@ -149,7 +149,7 @@ if(scenario==='exports'){
   const network=shellNetwork(),stores=new Map(),source=fs.readFileSync(new URL('../../sw.js',import.meta.url),'utf8');
   const shim=network.resources.get('/cloud.js'),implementation=network.resources.get('/src/cloud.js');
   const legacyImplementation=Buffer.from(implementation.toString().replaceAll("'./auth-helpers.js'","'./src/auth-helpers.js'"));
-  const legacySource=source.replace("'azice-shell-v7-cloud-adapter'","'fixture-legacy-cloud-shell'").replace(", '/src/cloud.js'",'');
+  const legacySource=source.replace("'azice-shell-v8-beta-0-1-1-2'","'fixture-legacy-cloud-shell'").replace(", '/src/cloud.js'",'');
   network.resources.set('/cloud.js',legacyImplementation);network.resources.delete('/src/cloud.js');
   const legacy=workerRuntime({network,stores,source:legacySource});await legacy.lifecycle('install');await legacy.lifecycle('activate');
   const old=await boot({cloud:true,readSource:async id=>(await legacy.fetch(id)).text()});
@@ -176,7 +176,7 @@ if(scenario==='exports'){
   const shim=network.resources.get('/demo.js'),implementation=network.resources.get('/src/demo.js');
   // Model the pre-move artifact using the byte-identical implementation at its
   // old URL and an inventory without src/demo.js; no copied legacy fixture drifts.
-  const legacySource=source.replace("'azice-shell-v7-cloud-adapter'","'fixture-legacy-demo-shell'").replace(", '/src/demo.js'",'');
+  const legacySource=source.replace("'azice-shell-v8-beta-0-1-1-2'","'fixture-legacy-demo-shell'").replace(", '/src/demo.js'",'');
   network.resources.set('/demo.js',implementation);network.resources.delete('/src/demo.js');
   const legacy=workerRuntime({network,stores,source:legacySource});await legacy.lifecycle('install');await legacy.lifecycle('activate');
   const old=await boot({readSource:async id=>(await legacy.fetch(id)).text()});
@@ -207,7 +207,7 @@ if(scenario==='exports'){
   const old=await boot({readSource:async id=>{const response=await network.fetch(id);assert.ok(response.ok);return response.text();}});
   assert.equal(old.h.context.fixtureRelease,'one');
   network.resources.set('/src/version.mjs',Buffer.from('export const version="two";'));
-  const upgradedSource=original.replace("'azice-shell-v7-cloud-adapter'","'test-upgrade-shell'").replace("const ASSETS = [","const ASSETS = ['/src/version.mjs',");
+  const upgradedSource=original.replace("'azice-shell-v8-beta-0-1-1-2'","'test-upgrade-shell'").replace("const ASSETS = [","const ASSETS = ['/src/version.mjs',");
   const v2=workerRuntime({network,stores,source:upgradedSource});await v2.lifecycle('install');await v2.lifecycle('activate');
   await old.runtime.load('/app.js');assert.equal(old.h.context.fixtureRelease,'one','Already evaluated client stays stable');listeners(old.h);
   network.online=false;

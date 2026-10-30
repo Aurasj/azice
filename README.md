@@ -1,89 +1,69 @@
-# AziCe? — small daily updates, shared with friends
+# AziCe?
 
-**BETA v0.1.1.1 — prepared locally** · [Live beta](https://azice.aagameri.tech) ·
-[Architecture](docs/ARCHITECTURE.md) · [Documentation](docs/README.md) ·
-[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+*Every day has a story. Share yours with friends.*
 
-AziCe? is a mobile-first, friends-only progressive web app for adults. Share an
-“I Drank” or “I Didn't Drink” check-in, a reason and camera photos when required by
-the post type. It explores private social sharing without streaks, rankings or
-pressure to consume alcohol.
+**[Live App: https://azice.aagameri.tech](https://azice.aagameri.tech)**
 
-The deployed link is the real beta service, **not a testing sandbox**. Use the
-local demo below to inspect the app without production accounts or backend access.
-Application source code and documentation are [MIT-licensed](LICENSE). The official
-name, logo, mascot and brand identity are reserved; see [BRANDING.md](BRANDING.md).
-Publication still requires owner approval; the current repository remains private.
+AziCe? is a private, friends-only, mobile-first social PWA for adults. It combines
+real authentication, daily posts and photos, reactions, comments, profiles and a
+personal calendar. Check-ins support both “I Drank” and “I Didn't Drink,” without
+streaks, rankings or pressure to consume alcohol.
 
-## A look inside
+Production runs **BETA v0.1.1.1** at `edf1427c9`. The A01–A04 stabilization patch
+on this branch is prepared as **BETA v0.1.1.2**, local and unreleased. [Deployment status](DEPLOY.md).
+
+The live application uses production services. For development and evaluation,
+use the isolated local demo below; it uses synthetic data and no production account.
+
+## Screenshots
 
 | Feed | Friends & Invites | Profile and calendar |
 | --- | --- | --- |
-| ![Local demo Feed with synthetic check-ins and an illustrated sample image](docs/screenshots/feed-demo.png) | ![Local demo Friends and Invites with an example loopback invitation](docs/screenshots/friends-demo.png) | ![Local demo Profile with a calendar check-in and the Notifications entry](docs/screenshots/profile-demo.png) |
+| ![Synthetic demo Feed](docs/screenshots/feed-demo.png) | ![Synthetic demo Friends and Invites](docs/screenshots/friends-demo.png) | ![Synthetic demo Profile and calendar](docs/screenshots/profile-demo.png) |
 
-Real browser captures of the **local synthetic demo**, at a 390×844 emulated
-viewport, captured from the preceding **BETA v0.1.1.0**. No real accounts, user photos or personal invitation links were used.
-The pictured invite is an inert loopback/demo example. See
-[capture provenance and artwork-review limits](docs/screenshots/README.md).
+These are real browser captures of the preceding **BETA v0.1.1.0** local demo at
+390×844, not physical-device screenshots. They contain no real accounts, personal
+photos or production invitation links. The Feed illustration is retained under the reserved-artwork policy; its project
+origin is maintainer-attested rather than independently verified. [Capture provenance and artwork status](docs/screenshots/README.md).
 
 ## Features
 
-- Friends-only Feed with a 48-hour interaction window, reactions and comments.
-- Personal invitation links, exact-username requests and limited discovery through
-  comments the requester may already view; no public profile directory.
-- Private Profile/calendar, editable identity and gallery-selected avatars.
-- Camera-only post photos (up to three), proportional JPEG optimization, stable
-  4:5 previews/carousels and an uncropped viewer.
-- Three published posts per configured local day, enforced server-side.
-- Incoming-request indicators and Activity for comments/reactions on your posts.
-- Optional Web Push, device/category preferences and installed-PWA invitations;
-  posting reminders are optional and off by default.
-- Email/password and Google Auth, onboarding and isolated password recovery.
-- Mobile safe areas, accessible dialogs and an existing dark/orange design.
+- Friends-only Feed with a 48-hour interaction window and read-only history.
+- Invitation links, exact-username requests and limited discovery through comments
+  on posts the requester can already view; no public profile directory.
+- Immutable comments, reactions and an Activity list for interactions on your posts.
+- Three posts per configured local day, enforced in PostgreSQL.
+- Camera-only post photos, up to three per post; proportional JPEG optimization,
+  4:5 previews/carousels and an uncropped full-photo viewer.
+- Editable profiles, gallery-selected avatars and a personal calendar.
+- Email/password and Google authentication, onboarding and isolated password recovery.
+- Optional Web Push with category/device preferences; posting reminders are off by default.
+- Home Screen installation support, responsive layouts and mobile safe-area handling.
 
-The backend-free demo implements local sample interactions, not real Auth, friend
-delivery or Web Push. Production capabilities require their configured backend
-and browser/device support; see [verification limits](docs/testing/verification-limits.md).
+The local demo implements sample interactions, not real authentication, friend
+request delivery or Web Push. Those features require a configured backend and
+supported browser/device.
 
-## Stack and architecture
+## Architecture and stack
 
-Vanilla JavaScript modules, HTML and CSS; no frontend framework or bundler.
-Supabase provides Auth, PostgreSQL RPC/RLS, private Storage and Edge Functions.
-A service worker supports the PWA shell and push. Netlify packages and publishes
-the static app. npm dependencies are development/test tools only.
+Vanilla JavaScript, native ES modules, HTML and CSS; no frontend framework or bundler.
+Supabase provides Auth, PostgreSQL RPCs/RLS, private Storage and Edge Functions.
+Netlify builds the static frontend into `dist/`; service workers provide the public
+PWA shell and notification handling. npm dependencies are development/test tools.
 
-| Local source | Responsibility |
+| Component | Responsibility |
 | --- | --- |
-| [app.js](app.js) | UI coordinator: state, routing, events, dialogs and asynchronous guards |
-| [src/cloud.js](src/cloud.js), [src/demo.js](src/demo.js) | Caller-owned cloud clients or local synthetic data |
-| [src/presentation.js](src/presentation.js) | Stateless escaping, formatting and markup |
-| [src/auth-helpers.js](src/auth-helpers.js) | Session classification and injected recovery storage |
-| [src/image-processing.js](src/image-processing.js) | Browser-realm canvas encoding and decoding |
-| [cloud.js](cloud.js), [demo.js](demo.js) | Compatibility exports preserving root module URLs |
-| [styles.css](styles.css) | One ordered stylesheet; no preprocessor or cascade reordering |
+| [app.js](app.js) | State, navigation, rendering, browser events and asynchronous UI guards |
+| [src/cloud.js](src/cloud.js) / [src/demo.js](src/demo.js) | Authenticated backend adapter / local synthetic adapter |
+| [src/presentation.js](src/presentation.js) | Stateless formatting, escaping and markup |
+| [src/auth-helpers.js](src/auth-helpers.js) / [src/image-processing.js](src/image-processing.js) | Recovery storage/session helpers and browser image utilities |
+| [cloud.js](cloud.js) / [demo.js](demo.js) | Root compatibility exports |
+| [styles.css](styles.css) | Single ordered stylesheet |
 
-```mermaid
-flowchart LR
-  UI["app.js coordinator"] --> Demo["src/demo.js: local samples"]
-  UI --> Cloud["src/cloud.js: authenticated adapter"]
-  Cloud --> Auth["Supabase Auth"]
-  Cloud --> DB["PostgreSQL RPCs + RLS"]
-  Cloud --> Storage["Private Storage"]
-  DB --> Activity["In-app Activity"]
-  DB --> Queue["Notification outbox"]
-  Queue --> Edge["Edge dispatcher"]
-  Edge --> Push["Web Push"]
-  Netlify["Netlify: build → dist"] --> UI
-```
+See [Architecture](docs/ARCHITECTURE.md) for ownership and trust boundaries, and the
+[documentation index](docs/README.md) for backend, testing and historical evidence.
 
-Engineering notes cover [upload recovery](docs/backend/post-upload-recovery.md),
-[account/request isolation](docs/archive/beta-v0.1.1.0-stabilization.md),
-[Web Push](docs/backend/web-push.md), and [migration status](docs/backend/migration-status.md).
-Read [ARCHITECTURE.md](docs/ARCHITECTURE.md) for module ownership, trust boundaries,
-notification flow and caching. The [documentation index](docs/README.md) separates
-current instructions from technical evidence and historical release records.
-
-## Run the safe local demo
+## Run the isolated demo
 
 Use **Node.js 24** and npm:
 
@@ -92,17 +72,16 @@ npm ci --ignore-scripts
 npm run dev
 ```
 
-Open **http://localhost:5173**. Fresh clones use the existing labeled local demo,
-with synthetic posts/friends and no Supabase connection or API keys. Demo invitation
-links are examples. Camera access still needs a camera and localhost/HTTPS.
+Open **http://localhost:5173**. Fresh clones run the labeled demo with synthetic
+posts and friends. No API keys or Supabase connection are needed. Camera access
+requires a camera and localhost/HTTPS.
 
-For your own disposable backend, copy config.example.json to ignored
-**config.local.json** and supply only that project's public configuration.
-The local server validates it and rejects the production project.
-See [CONTRIBUTING.md](CONTRIBUTING.md); never use privileged keys or real users.
-Do not expose the source server to the internet.
+For a disposable backend, copy `config.example.json` to ignored `config.local.json`
+and supply only that project's public configuration. The local server rejects the
+production project. Never supply privileged keys or real-user data, and do not
+expose the source server to the internet. [Contributor setup](CONTRIBUTING.md).
 
-## Checks
+## Test and build
 
 ```sh
 npm test
@@ -114,63 +93,47 @@ node scripts/check-doc-links.mjs
 git diff --check
 ```
 
-| Command | What it verifies |
-| --- | --- |
-| npm test | UI/adapters, account races, comments, media, native ESM identity/startup, packaging/MIME, worker models and ordered CSS contracts using synthetic responses. |
-| npm run check | JavaScript syntax, all three Edge syntax transpilation checks and public-config validation, offline. |
-| npm run test:sql | PGlite SQL/RLS regressions in disposable in-memory databases; no hosted backend. |
-| npm run build | Public-only **demo** output in dist/. |
+- JavaScript tests cover synthetic UI/adapters, account races, media processing,
+  native ESM linking, packaging/MIME, worker simulations and ordered CSS contracts.
+- SQL tests use disposable in-memory PGlite databases. Native PostgreSQL checks
+  are separate and require an explicitly isolated environment.
+- Syntax checks include all three Edge Functions; transpilation does not establish
+  native Deno compatibility.
+- Default builds produce demo-only `dist/` output. Optional SDK smoke tests require
+  a hash-verified local artifact; [SDK instructions](docs/backend/sdk-versions.md).
 
-Four optional SDK smoke tests skip unless their hash-verified local artifact is
-provided; [instructions](docs/backend/sdk-versions.md). Default branding tests use the
-committed approved-master fingerprint. Original-source comparison is explicit
-authoring verification through AZICE_BRANDING_SOURCE, not a required untracked file.
-Native PostgreSQL and real-device/service tests are separate; mocks or PGlite do
-not prove hosted Auth, physical Storage cleanup or real push delivery.
+The existing Netlify production context generates public configuration from
+`config.production.json`. Preview and branch contexts remain demo-only.
+`npm run build:production` is an explicit maintainer packaging check, not a deploy;
+opening its output connects to production. Do not use it as a contributor sandbox.
 
-## Production and previews
+## Known limitations
 
-PR #1 is merged; production main is `34b4766124d94aece509b444a61fd6cc157a465d`.
-GitHub CI passed and Netlify published that commit. Current evidence and the
-owner-reviewed deployment settings are in [DEPLOY.md](DEPLOY.md).
+- R03 account-deletion/upload concurrency remains unresolved and accepted for this
+  beta. Physical Storage leakage has not been confirmed; complete erasure is not guaranteed.
+- Uncertain avatar operations in the local patch retain recovery references and
+  require support review. Browser-local recovery information is lost if its storage
+  is cleared. [Recovery behavior](docs/backend/post-upload-recovery.md).
+- Native Deno, real Storage failure/recovery, physical phones, keyboard/notch
+  behavior and authenticated offline use require separate verification.
+- The synthetic 390×320 Activity fixture has a documented last-row/navigation
+  limitation; this is not a newly verified production-device failure.
 
-The recorded hosted verification is dated **2026-10-28**. The module/CSS/docs
-refactor on `refactor/project-structure` is still **local and uncommitted**, with
-APP_VERSION intentionally prepared as **0.1.1.1**; production remains BETA v0.1.1.0. Local test results are not a new GitHub CI run or deployment.
+[Verification limits](docs/testing/verification-limits.md) distinguish simulated,
+native database, browser and physical-service evidence. Passing tests are not a
+security, legal-compliance or universal platform-support guarantee.
 
-The unchanged Netlify command is **node scripts/build.mjs**, publishing **dist**.
-Its production context generates dist/config.js from **config.production.json**,
-which retains the exact existing public URL/key/VAPID values. No hosted settings,
-secrets or backend behavior change is required. The profile is intentionally
-public data; separating it prevents accidental use, not endpoint discovery.
+## Contribute, report and reuse
 
-Source config, default local builds, branch deploys and PR previews are demo-only.
-**npm run build:production** is an explicit maintainer packaging check and does
-not deploy anything, but its output connects to production if opened.
-Generated dist/, local overrides, tools, SQL and operational files are not published
-by the frontend allowlist. PWA identity remains unchanged; the only runtime presentation change is the release badge.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or PR.
+Report vulnerabilities privately using [SECURITY.md](SECURITY.md), without public
+exploit instructions, credentials or real-user data. The existing
+[Safety & Privacy contact](mailto:aagameriaa@gmail.com) also handles content-removal
+and takedown enquiries; it is separate from authentication email configuration.
 
-## Known limits and publication decisions
-
-R03 account-deletion/upload concurrency remains unresolved and accepted for this
-beta. Physical Storage leakage has **not** been confirmed. No complete-erasure
-guarantee is made and no production reproduction is authorized.
-Native Deno and real Storage failure recovery also remain incompletely verified.
-
-The synthetic **390×320 Activity fixture** cannot scroll its last row fully clear
-of navigation. This pre-existing result was identical before/after CSS formatting;
-it is not a newly verified production/device failure. Physical iPhone/Android,
-actual keyboard/notch behavior and authenticated offline use remain separate
-acceptance checks. See [verification limits](docs/testing/verification-limits.md).
-
-[docs/open-source-readiness.md](docs/open-source-readiness.md) records the proposed branch protection, CI and
-preview restrictions, historical identity/privacy review, R03 disclosure decision,
-and outstanding publication approvals. MIT covers the application code, not bundled
-artwork or official branding. The mascot's ChatGPT origin is owner-confirmed;
-legacy/demo artwork rights still need confirmation. Package publishing remains
-private; see [BRANDING.md](BRANDING.md) before distributing a fork.
-No access to production services is granted by the source-code license.
-
-For security reports read [SECURITY.md](SECURITY.md). The existing
-[Safety & Privacy contact](mailto:aagameriaa@gmail.com) is separate from Auth
-email/SMTP configuration.
+Application source code and documentation are [MIT-licensed](LICENSE). The official
+AziCe? name, logo, mascot and bundled artwork are excluded; see [BRANDING.md](BRANDING.md)
+before distributing a fork. Legacy artwork has a project-origin maintainer attestation, not independent
+verification. Publication of the identified Git emails and historical machine paths
+is accepted; R03 disclosure and public contribution settings still require review. The repository remains private;
+[open-source readiness](docs/open-source-readiness.md) records the outstanding decisions.

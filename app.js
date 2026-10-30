@@ -9,7 +9,7 @@ if (incomingInvite) sessionStorage.setItem('azice_pending_invite', incomingInvit
 const savedInvite = () => sessionStorage.getItem('azice_pending_invite');
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabasePublishableKey);
 // MAJOR.MINOR.FEATURE.PATCH — change intentionally for releases, never per commit.
-const APP_VERSION='0.1.1.1';
+const APP_VERSION='0.1.1.2';
 function parseRecoveryLink(search=location.search,hash=location.hash||''){
  const query=new URLSearchParams(search||''),fragment=new URLSearchParams(hash.replace(/^#/,''));
  const active=query.get('recovery')==='1'||query.get('type')==='recovery'||fragment.get('type')==='recovery';
@@ -77,6 +77,7 @@ const state = {
 };
 let api;
 let usernameRequestBusy=false;
+let inviteRotationVersion=0,singlePostRefreshVersion=0,inviteRotationWrites=Promise.resolve();
 const DAILY_POST_LIMIT_MESSAGE="You've reached today's limit. Come back tomorrow!";
 let postingTimer=null,postingRefreshVersion=0;
 function dailyPostingCount(){return state.dailyPosting?`${Math.min(3,state.dailyPosting.count)} of 3 today`:state.postingError?"Couldn't check today's posts. Try again.":"Checking today's posts…";}
@@ -974,7 +975,14 @@ async function refreshPosts(){
   try{const posts=await api.getHistory(id);if(!task.current())return;const history=await hydrate(posts);if(!task.current())return;state.history=history;render();}catch(error){if(task.current())throw error;}return;
  }
  if(state.view==='feed'){await refreshFeed();return;}
- if(state.view==='post'){const version=accountVersion,post=await api.getPost(state.openedPost.id);if(version!==accountVersion)return;if(!post){showToast('This update is no longer available.');if(state.postReturn==='activity')await openActivity();else await home();return;}state.openedPost=(await hydrate([post]))[0];}render();
+ if(state.view==='post'){
+ const account=accountVersion,navigation=profileRequestVersion,id=state.openedPost.id,request=++singlePostRefreshVersion;
+ const current=()=>account===accountVersion&&navigation===profileRequestVersion&&request===singlePostRefreshVersion&&state.view==='post'&&state.openedPost?.id===id&&!recovery.active;
+ try{const post=await api.getPost(id);if(!current())return;
+ if(!post){showToast('This update is no longer available.');if(state.postReturn==='activity')await openActivity();else await home();return;}
+ const hydrated=(await hydrate([post]))[0];if(!current())return;state.openedPost=hydrated;
+ }catch(error){if(current())throw error;else return;}
+ }render();
 }
 async function handleAction(button){const a=button.dataset.action,id=button.dataset.id,val=button.dataset.value;
  if(recovery.active&&(!a.startsWith('recovery-')||recovery.busy))return;
@@ -1073,7 +1081,14 @@ async function handleAction(button){const a=button.dataset.action,id=button.data
    else{await navigator.clipboard.writeText(link);showToast('Invitation link copied!');}
    break;
  }
- case 'rotate-invite':if(await confirmInApp('Your previous link will stop working.', {title:'Create a new invitation link?',action:'Create new link'})){state.inviteToken=await api.rotateInvite();render();showToast('New invitation link created.');}break;
+ case 'rotate-invite':{
+ const account=accountVersion,request=++inviteRotationVersion,navigation=profileRequestVersion,view=state.view;
+ const current=()=>account===accountVersion&&request===inviteRotationVersion&&navigation===profileRequestVersion&&view===state.view&&!recovery.active;
+ try{if(!await confirmInApp('Your previous link will stop working.',{title:'Create a new invitation link?',action:'Create new link'})||!current())break;
+ const writing=inviteRotationWrites.catch(()=>{}).then(()=>current()?api.rotateInvite():null);
+ inviteRotationWrites=writing.catch(()=>{});const token=await writing;if(!current())break;state.inviteToken=token;render();showToast('New invitation link created.');
+ }catch(error){if(current())throw error;}break;
+ }
  case 'send-request':await api.sendRequest(savedInvite());await refreshFriends();sessionStorage.removeItem('azice_pending_invite');history.replaceState({},'',location.pathname);await home();showToast('Friend request sent!');break;
  case 'dismiss-invite':sessionStorage.removeItem('azice_pending_invite');history.replaceState({},'',location.pathname);await home();break;
  case 'toggle-auth':state.authSignUp=!state.authSignUp;render();break;

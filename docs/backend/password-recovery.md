@@ -1,5 +1,8 @@
 # Password recovery and release badge
 
+**Production:** BETA v0.1.1.1 at `edf1427c9daa3080600ebfeb2a6f71ee8957cc88`.
+The A01–A04 stabilization patch is local and unreleased.
+
 > **Current reading note:** Password recovery is shipped. Email/dashboard procedures below are reference steps, not authorization to change the working Auth/email configuration.
 > Commands assume the repository root. See the [documentation index](../README.md)
 > and [deployment status](../../DEPLOY.md) before any operator action.
@@ -7,7 +10,7 @@
 
 ## Application behavior
 
-`app.js` defines the manually maintained `APP_VERSION` (`MAJOR.MINOR.FEATURE.PATCH`). The locally prepared release's shared header displays `BETA v0.1.1.1`; the recorded production baseline is BETA v0.1.1.0 at main `34b4766`. This local preparation is not a deployment. There is no browser-stored version or commit-based increment. The badge describes the JavaScript build actually running: an offline cached build can still show its older version until updated online through the existing service worker.
+`app.js` defines the manually maintained `APP_VERSION` (`MAJOR.MINOR.FEATURE.PATCH`). Production displays `BETA v0.1.1.1` at main `edf1427`; the local patch displays `BETA v0.1.1.2` and is not deployed. There is no browser-stored version or commit-based increment. The badge describes the JavaScript build actually running: an offline cached build can still show its older version until updated online through the existing service worker.
 
 Sign In → Forgot password? requests a Supabase Auth recovery email. Successful requests and unknown-account responses use the same generic message. Request failures offer retry without exposing Auth/SMTP details. No permission or email request happens automatically.
 

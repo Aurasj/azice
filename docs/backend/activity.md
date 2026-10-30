@@ -5,7 +5,7 @@
 > and [deployment status](../../DEPLOY.md) before any operator action.
 
 
-The owner confirmed the original Activity migration was applied unchanged in
+Deployment records confirm the original Activity migration was applied unchanged in
 production (see [migration-status.md](migration-status.md)). Do not reapply it.
 The initial setup procedure below is historical/fresh-environment guidance, not
 this release's production instructions. The separate F06 correction is now applied
@@ -143,7 +143,7 @@ Historical pre-deployment checklist (completed later; do not repeat):
    another account and anon cannot read/mark foreign activity. Verify overlapping
    native sessions return internally consistent snapshots and the existing app
    refresh picks up the next arrival.
-3. After owner approval, apply ONLY `20261024174419_bound_activity_unread.sql` as
+3. After maintainer authorization, apply ONLY `20261024174419_bound_activity_unread.sql` as
    that owner using the reviewed production SQL workflow. It contains BEGIN/COMMIT.
    Do not replay the original Activity migration or run a blanket database push.
    F02's separate migration has its own review/order; F03 has no SQL prerequisite.

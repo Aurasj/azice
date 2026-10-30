@@ -15,30 +15,31 @@ No registered-trademark status or guaranteed exclusive copyright is asserted.
 
 ## Artwork inventory and provenance
 
-The owner confirms that the logo and beer-mug mascot were generated specifically
+Project provenance records state that the logo and beer-mug mascot were generated specifically
 for this project using ChatGPT, with no known third-party source material.
-That is an owner-provided provenance statement, not a guarantee of legal
+That is a maintainer-attested provenance statement, not a guarantee of legal
 exclusivity or a third-party rights clearance. Derived exports remain reserved.
 
 | Files | Origin / status |
 | --- | --- |
-| `assets/logo.png` | Owner-confirmed ChatGPT mascot source; remains untracked and excluded from this preparation. |
+| `assets/logo.png` | Maintainer-attested ChatGPT mascot source; remains untracked and excluded from this preparation. |
 | `assets/azice-mascot-master-v2.png` | Editing master derived from that mascot; background extended with an image-editing tool while preserving the mascot core. |
 | `assets/azice-pwa-192-v2.png`, `assets/azice-pwa-512-v2.png` | Standard PWA/Web Push exports from the master. |
 | `assets/azice-maskable-512-v2.png` | Padded Android maskable export from the master. |
 | `assets/azice-apple-touch-180-v2.png` | Apple touch export from the master. |
 | `assets/azice-favicon-16-v2.png`, `assets/azice-favicon-32-v2.png` | Favicon exports from the master. |
-| `assets/icon-192.png`, `assets/icon-512.png` | Legacy AC? graphics, present in the initial starter commit; origin/rights still need owner confirmation. |
-| `assets/demo-beer.svg` | Inline vector demo illustration, present in the initial starter commit; origin/rights still need owner confirmation. No external image/font references were found in the SVG. |
-| `docs/screenshots/*.png` | Proposed real local-demo captures. The Feed image depicts `assets/demo-beer.svg`; capture provenance does not clear the underlying artwork. Owner selection/publication review is pending. |
+| `assets/icon-192.png`, `assets/icon-512.png` | Legacy AC? graphics from the initial starter commit. Maintainer states these were created for AziCe? during initial development, not knowingly copied from external sources; this is not independent provenance verification. Retained for historical references and older-client URL compatibility. |
+| `assets/demo-beer.svg` | Active vector demo illustration, present in the initial starter commit. The same project-created/not-knowingly-copied maintainer attestation applies; independent provenance verification is not established. Required by the demo adapter, worker cache, tests and Feed screenshot. No external image/font references were found in the SVG. |
+| `docs/screenshots/*.png` | Proposed real local-demo captures. The Feed image depicts `assets/demo-beer.svg`; capture provenance does not clear the underlying artwork. Maintainer selection/publication review is pending. |
 
-The legacy/demo graphics are also excluded from MIT pending that review. A Git
+The legacy/demo graphics remain excluded from MIT. The new maintainer attestation
+clarifies their origin but is not an independent rights audit. A Git
 commit establishes when a file entered this repository, not its authorship or
 rights. Do not infer clearance from the absence of a watermark or attribution.
 
 [Screenshot provenance](docs/screenshots/README.md) records synthetic data and
 production isolation. MIT licensing of documentation text/source does not grant
-additional rights to depicted official branding or uncleared artwork. The existing
+additional rights to depicted official branding or reserved artwork. The existing
 LICENSE scope is unchanged; no registered-mark or exclusive-copyright claim is added.
 
 ## Creating your own distribution

@@ -27,7 +27,7 @@ available; psql.exe and pg_isready.exe were absent. A direct version command and
 driver import confirmed availability. No existing PostgreSQL process was running
 and the loopback port 55439 refused connections.
 
-After explicit owner approval, existing binaries initialized a NEW ignored cluster
+After explicit maintainer authorization, existing binaries initialized a NEW ignored cluster
 under `supabase/.temp/native-stabilization-pg15/data`, with a log beside it. It was
 started only on `127.0.0.1:55439`, with `cluster_name=azice_stabilization_disposable`.
 The old temporary cluster was not reused. The test server runs as the current OS
@@ -49,7 +49,7 @@ for inspection. Final regression checks passed: **346 JavaScript tests**, **97
 PGlite groups** (including the no-Cron variant), **24 native PostgreSQL checks/groups**,
 **43 JavaScript syntax checks**, both unchanged Edge Functions' syntax transpilation,
 production build and tracked/new-file whitespace checks. F01-F06 source, both
-forward-only migrations and the checkpoint commit were not changed by this task.
+forward-only migrations and the checkpoint commit were not changed during that verification.
 
 ## Executed native tests
 
@@ -100,7 +100,7 @@ features, backend functions or migrations were needed for this verification.
 ## Safe setup/rerun instructions
 
 Do not install software, initialize/start servers, change an existing cluster, or
-register a service without owner approval. If the existing binaries/driver are
+register a service without maintainer authorization. If the existing binaries/driver are
 missing, stop and request approval for provisioning; neither runner installs them.
 psql is not needed because the pg driver executes the SQL.
 

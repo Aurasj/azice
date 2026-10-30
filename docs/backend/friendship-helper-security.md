@@ -6,7 +6,7 @@
 
 
 Forward-only migration: `supabase/migrations/20261024171206_restrict_friendship_helper.sql`.
-The owner applied it in production; final read-only release checks confirmed the
+The deployment record identifies it as applied in production; final read-only release checks confirmed the
 effective permissions/profile guard. Do not reapply. See migration-status.md.
 The original review below describes this SQL fix; it changes no frontend,
 old migration, Storage policy, Edge Function or scheduler. Never replay schema.sql.
@@ -186,7 +186,7 @@ passed. The pre-fix denial test failed as expected before applying the fix.
    Test confirmed-friend reads, nonfriend/pending denials, normal profile edits,
    Feed/photos/comments/reactions, invites/accept/removal, Activity and the real
    service-role dispatcher. Confirm owner-run scheduled processing succeeds.
-3. Obtain owner approval. Apply ONLY
+3. Obtain maintainer authorization. Apply ONLY
    `20261024171206_restrict_friendship_helper.sql` once, as postgres, in the
    production SQL Editor or the reviewed migration mechanism. It already contains
    BEGIN/COMMIT. Do not replay old supabase/migrations/schema.sql or use a blanket db push

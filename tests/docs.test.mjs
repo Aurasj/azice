@@ -19,3 +19,5 @@ test('documentation check detects missing files/anchors/images and case errors, 
   fs.appendFileSync(path.join(root,'README.md'),'[bad](docs/missing.md)\n[case](<docs/A file.md>)\n[anchor](<docs/a file.md#missing>)\n![image](docs/missing.png)\n');
   const issues=checkDocumentation(root).issues;assert.equal(issues.length,4);assert.ok(issues.some(x=>x.includes('missing anchor')));assert.ok(issues.some(x=>x.includes('missing.png')));assert.ok(issues.some(x=>x.includes('A file.md')));
 });
+
+test('current release status records deployed v0.1.1.1 without changing screenshot provenance',()=>{for(const file of ['README.md','DEPLOY.md','SECURITY.md','docs/ARCHITECTURE.md','docs/README.md','docs/open-source-readiness.md','docs/backend/migration-status.md']){const s=fs.readFileSync(new URL('../'+file,import.meta.url),'utf8');assert(!s.includes('local and uncommitted'),file);assert(s.includes('0.1.1.1'),file);assert(s.includes('edf1427'),file);}assert(fs.readFileSync(new URL('../docs/screenshots/README.md',import.meta.url),'utf8').includes('preceding **BETA v0.1.1.0**'));});

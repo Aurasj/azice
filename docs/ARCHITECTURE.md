@@ -1,8 +1,11 @@
 # Architecture
 
-This describes the local vanilla-JavaScript refactor for **BETA v0.1.1.1**, prepared locally.
-Production is recorded at main `34b4766`; the refactor branch has not been
-published. Existing behavior, backend contracts and PWA identity are preserved.
+**Production:** BETA v0.1.1.1 at `edf1427c9daa3080600ebfeb2a6f71ee8957cc88`.
+The A01–A04 stabilization patch is prepared as **BETA v0.1.1.2**, local and unreleased.
+
+This describes the local vanilla-JavaScript refactor for **BETA v0.1.1.1**, deployed through PR #2.
+Production is recorded at main `edf1427`; the refactor branch has been
+merged and deployed. Existing behavior, backend contracts and PWA identity are preserved.
 See [deployment status](../DEPLOY.md) for dated evidence.
 
 ## Entry points and module ownership

@@ -132,7 +132,7 @@ not expand browser deletion rights to address legacy damage.
 
 ## Historical rollout and manual recovery reference
 
-1. Owner reviews this frontend diff and tests. Keep F02's migration review/deployment
+1. Review the frontend diff and tests. Keep F02's migration review/deployment
    separate; F03 adds no migration or backend prerequisite and changes no secrets.
 2. On a disposable Supabase staging project, use operator-controlled accounts A/B.
    Publish one normal photo post. Confirm B can view it only while authorized and
@@ -166,3 +166,22 @@ not expand browser deletion rights to address legacy damage.
    normal release process. No SQL, Edge deployment, scheduler or provider setting
    change is required. Existing account deletion continues its privileged Storage
    cleanup before Auth deletion, including retained draft directories.
+
+## Local avatar cleanup follow-up (A03)
+
+The local stabilization patch also journals owner-scoped avatar paths before upload.
+The next avatar selection retries known failed removals under the existing per-account
+operation lock, checks the current profile reference, and verifies absence through
+Storage listing before forgetting a removed path. Returned errors and thrown failures
+retain the reference. A current avatar is never intentionally removed.
+
+An unconfirmed upload or profile-update outcome retains its reference and stops automatic recovery for
+support review: a client cannot prove that an in-flight operation has finished. An
+uncertain reference is not reconciled from a later profile snapshot, even if that
+snapshot matches. Only explicit returned transaction-abort errors permit checked
+profile-failure cleanup; transport errors and unknown outcomes do not. This
+is not an R03 fix or proof of physical deletion. Recovery uses localStorage with
+Web Locks, otherwise tab-local sessionStorage; clearing that storage loses these
+local avatar references. These client checks do not make profile updates and
+Storage deletion atomic against arbitrary external writers; that guarantee would
+require backend coordination. No privileged cleanup service or policy change is added.

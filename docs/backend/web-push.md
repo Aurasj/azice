@@ -10,9 +10,9 @@ Contributor setup: `npm ci --ignore-scripts`, then `npm run check` and
 supabase/.temp installation instructions below are historical, not needed for
 these checks. No production credentials or live backend are used by contributor CI.
 
-The initial Web Push backend and the 24/7 delivery migration are deployed. The operator confirmed that `20261023202526_remove_push_quiet_hours.sql` was applied successfully and that a real Android push for a new comment was received afterward. This is operator-reported production verification; Codex did not execute remote SQL or perform that device test.
+The initial Web Push backend and the 24/7 delivery migration are deployed. The operator confirmed that `20261023202526_remove_push_quiet_hours.sql` was applied successfully and that a real Android push for a new comment was received afterward. This is operator-reported production verification; the recorded audit did not execute remote SQL or perform that device test.
 
-For BETA v0.1.1.0 use [migration-status.md](migration-status.md) and ../../DEPLOY.md.
+For current deployment status use [migration-status.md](migration-status.md) and ../../DEPLOY.md.
 The initial setup/earlier rollout sections below are historical; do not replay
 them or treat old pending-discovery wording as current migration status. F02/F06
 are already applied and verified; delete-account v7 is ACTIVE with its SDK pin.
@@ -139,7 +139,7 @@ Posting reminders remain OFF by default. Enqueue remains approximately 20:00–2
 ### Rollout record and frontend publication
 
 1. Backend migration: the operator reports successful application of the exact reviewed migration. No further SQL, Edge deployment, secret update or Cron change is required for this release.
-2. Production smoke check: the operator reports receipt of a real Android push for a new comment after application. Overnight delivery, other categories, quotas, iPhone delivery and concurrent native database behavior have not been independently verified by Codex.
+2. Production smoke check: the operator reports receipt of a real Android push for a new comment after application. Overnight delivery, other categories, quotas, iPhone delivery and concurrent native database behavior have not been independently verified by the recorded audit.
 3. Frontend last: after local checks, commit only the scoped migration, Notifications UI, regression tests and documentation, then push to origin/main. Check the automatic Netlify build separately; a successful Git push alone does not establish successful deployment.
 
 If rollback is required, use a separately reviewed new forward migration restoring only the two prior function bodies (and the old next-day quota boundary). Do not replay the original Web Push migration, delete/recreate jobs or clear receipts/quotas. Recovered deadlines and already delivered notifications cannot be undone; the restored claim/validation time gates can defer subsequent nonurgent sends again.

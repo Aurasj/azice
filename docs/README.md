@@ -1,5 +1,8 @@
 # Documentation
 
+**Production:** BETA v0.1.1.1 at `edf1427c9daa3080600ebfeb2a6f71ee8957cc88`.
+The A01–A04 stabilization patch is prepared as **BETA v0.1.1.2**, local and unreleased.
+
 Start with [README](../README.md) and [contributor setup](../CONTRIBUTING.md).
 This index separates current guidance, technical evidence and historical records.
 All shell commands assume the repository root unless a guide explicitly says otherwise.
@@ -8,14 +11,14 @@ All shell commands assume the repository root unless a guide explicitly says oth
 
 - [Architecture](ARCHITECTURE.md): coordinator, `src/` helpers/adapters, compatibility
   entries, backend trust boundaries, notifications, build and PWA caching.
-- [Deployment and production status](../DEPLOY.md): BETA v0.1.1.0 at main `34b4766`.
+- [Deployment and production status](../DEPLOY.md): BETA v0.1.1.1 at main `edf1427`.
 - [Open-source readiness](open-source-readiness.md): merged PR #1, successful CI,
   reviewed settings and decisions still required before public visibility.
 - [Security policy](../SECURITY.md), [branding/artwork](../BRANDING.md) and [license](../LICENSE).
 - [Portfolio screenshots and provenance](screenshots/README.md): real local-demo
   captures, synthetic data, isolation checks and remaining artwork approval.
 
-This describes the local BETA v0.1.1.1 refactor, not an already published frontend update.
+This describes the deployed BETA v0.1.1.1 refactor. The present stabilization patch remains local.
 Production evidence is dated in DEPLOY.md; historical PR #1 CI does not establish
 that unpublished local changes have run on GitHub.
 

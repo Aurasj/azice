@@ -65,13 +65,13 @@ test('manifest identity stays stable and platform metadata uses separate version
 
 test('versioned service-worker cache includes every icon and retains private-data and push boundaries',async()=>{
  const events={},added=[],deleted=[],imports=[];let claimed=false;
- const context=vm.createContext({URL,Promise,importScripts:path=>imports.push(path),self:{location:{origin:'https://azice.test'},addEventListener:(name,fn)=>{events[name]=fn;},skipWaiting:()=>Promise.resolve(),clients:{claim:async()=>{claimed=true;}}},caches:{open:async()=>({addAll:async paths=>added.push(...paths)}),keys:async()=>['azice-shell-v1','azice-shell-v2-mascot','azice-shell-v3-presentation','azice-shell-v4-auth-helpers','azice-shell-v5-image-processing','azice-shell-v6-demo-adapter','azice-shell-v7-cloud-adapter'],delete:async key=>deleted.push(key)}});
+ const context=vm.createContext({URL,Promise,importScripts:path=>imports.push(path),self:{location:{origin:'https://azice.test'},addEventListener:(name,fn)=>{events[name]=fn;},skipWaiting:()=>Promise.resolve(),clients:{claim:async()=>{claimed=true;}}},caches:{open:async()=>({addAll:async paths=>added.push(...paths)}),keys:async()=>['azice-shell-v1','azice-shell-v2-mascot','azice-shell-v3-presentation','azice-shell-v4-auth-helpers','azice-shell-v5-image-processing','azice-shell-v6-demo-adapter','azice-shell-v7-cloud-adapter','azice-shell-v8-beta-0-1-1-2'],delete:async key=>deleted.push(key)}});
  vm.runInContext(read('sw.js').toString(),context);
  let work;events.install({waitUntil:p=>{work=p;}});await work;
  for(const [name]of exports)assert.ok(added.includes(`/assets/azice-${name}-v2.png`));
  for(const path of added)assert.ok(fs.existsSync(new URL('..'+(path==='/'?'/index.html':path),import.meta.url)),path);
  assert.ok(!added.some(path=>/logo\.png|master|private|post-images/.test(path)));
- events.activate({waitUntil:p=>{work=p;}});await work;assert.deepEqual(deleted,['azice-shell-v1','azice-shell-v2-mascot','azice-shell-v3-presentation','azice-shell-v4-auth-helpers','azice-shell-v5-image-processing','azice-shell-v6-demo-adapter']);assert.equal(claimed,true);assert.deepEqual(imports,['/push-sw.js']);
+ events.activate({waitUntil:p=>{work=p;}});await work;assert.deepEqual(deleted,['azice-shell-v1','azice-shell-v2-mascot','azice-shell-v3-presentation','azice-shell-v4-auth-helpers','azice-shell-v5-image-processing','azice-shell-v6-demo-adapter','azice-shell-v7-cloud-adapter']);assert.equal(claimed,true);assert.deepEqual(imports,['/push-sw.js']);
  let intercepted=false;events.fetch({request:{url:'https://azice.test/storage/v1/private-photo',method:'GET'},respondWith(){intercepted=true;}});assert.equal(intercepted,false);
  assert.match(read('push-sw.js').toString(),/icon:'\/assets\/azice-pwa-192-v2\.png'/);
 });

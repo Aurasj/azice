@@ -21,8 +21,8 @@ test('source MIT grant and mixed code/artwork package scope agree',()=>{
 test('branding inventories graphics and contributor documents link the active policy',()=>{
  const branding=read('BRANDING.md');
  for(const name of fs.readdirSync(new URL('../assets/',import.meta.url)).filter(name=>/\.(?:png|svg)$/.test(name)))assert.ok(branding.includes('assets/'+name),'Artwork needs provenance/scope entry: '+name);
- assert.match(branding,/owner confirms[\s\S]*ChatGPT/);
- assert.match(branding,/origin\/rights still need owner confirmation/);
+ assert.match(branding,/Project provenance records state[\s\S]*ChatGPT[\s\S]*maintainer-attested provenance statement/);
+ assert.match(branding,/Maintainer states these were created for AziCe[\s\S]*not independent provenance verification/);
  assert.match(branding,/must not imply official affiliation/);
  for(const file of ['README.md','CONTRIBUTING.md','.github/pull_request_template.md']){
   const text=read(file);assert.ok(text.includes('LICENSE'),file);assert.ok(text.includes('BRANDING.md'),file);assert.ok(!text.includes('LICENSE.proposed'),file);
