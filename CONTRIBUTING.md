@@ -2,7 +2,7 @@
 
 The application source code and documentation are MIT-licensed under LICENSE.
 Official branding and bundled artwork are excluded; read BRANDING.md before
-creating a separate distribution. Repository visibility still needs owner approval.
+creating a separate distribution. Repository visibility still needs maintainer authorization.
 Contributions to source code are submitted under the same MIT terms. Identify any
 third-party material and its license; do not submit artwork without its provenance
 and permission. No copyright assignment or separate contributor agreement is added.
@@ -46,10 +46,11 @@ node scripts/check-doc-links.mjs
   described in docs/backend/sdk-versions.md. They never download/visit a backend.
 - Default branding tests verify the committed master core's decoded-pixel hash,
   icon format/sizing, safe zone and PWA references. They need no assets/logo.png.
-  To additionally compare an owner-held original, set AZICE_BRANDING_SOURCE to its
+  To additionally compare a maintainer-held original, set AZICE_BRANDING_SOURCE to its
   absolute path and run `node --test tests/branding.test.mjs`. Do not commit that
   authoring asset implicitly or change its rights/licensing. BRANDING.md records
-  owner-confirmed mascot provenance and the pending legacy/demo artwork review.
+  maintainer-attested mascot and legacy/demo provenance, distinguished from
+  independent rights verification. All bundled artwork remains reserved.
 - npm run check checks JavaScript/Edge syntax and public configuration offline.
   TypeScript transpilation is not native Deno execution.
 - npm run test:sql uses the locked PGlite dependency and new in-memory databases,
@@ -108,7 +109,7 @@ Keep generated dist/, node_modules, local configuration, logs, user photos and
 credentials out of commits. Preserve unrelated files. Use forward-only reviewed
 SQL for backend changes; never reapply schema.sql on an existing database or
 repair migration history to bypass a failed prerequisite. Production SQL, Edge
-deployment and service changes need separate explicit owner approval.
+deployment and service changes need separate explicit maintainer authorization.
 
 Report security concerns privately as described in SECURITY.md. Do not reproduce
 R03 against production; its accepted beta risk is not authorization to test users.

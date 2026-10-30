@@ -9,7 +9,7 @@
 ## Capture provenance and privacy
 
 These captures show the preceding **BETA v0.1.1.0** synthetic demo, not the
-prepared BETA v0.1.1.1 badge. The original images and metadata are unchanged.
+prepared BETA v0.1.1.2 badge. The original images and metadata are unchanged.
 
 Captured 2026-10-29 in installed headless **Chrome 155.0.8059.85**, at a 390×844
 emulated mobile viewport. These are direct PNG captures, without generated screens,
@@ -29,15 +29,14 @@ production invitation or secret. Browser storage was cleared and processes stopp
 
 ## Artwork and publication review
 
-The Feed capture includes **assets/demo-beer.svg**. Its legacy provenance/rights
-remain an owner-review blocker: a screenshot does not clear the artwork or make it
-MIT-licensed. Official identity and underlying artwork retain the exclusions in
-[BRANDING.md](../../BRANDING.md) and [LICENSE](../../LICENSE).
+The Feed capture includes **assets/demo-beer.svg**. Its project-created origin is
+maintainer-attested, with no known external source; this is not independent
+provenance verification. The illustration is required by the existing demo and
+remains excluded from MIT under [BRANDING.md](../../BRANDING.md) and
+[LICENSE](../../LICENSE). These captures are retained without editing.
 
-These three proposed captures need owner approval before publication. Inclusion
-grants no separate license to reserved marks or uncleared artwork. The images
-have no runtime references and are excluded from the frontend build.
-[Publication decisions](../open-source-readiness.md).
+No separate rights to reserved artwork are granted by the screenshot or the
+MIT license for documentation text. [Publication decisions](../open-source-readiness.md).
 
 ## Re-capture checklist
 
@@ -50,4 +49,4 @@ have no runtime references and are excluded from the frontend build.
 4. Capture at the stated viewport; inspect visible content and URLs. Exclude
    browser profile details, real data and personal invitation tokens.
 5. Inspect PNG metadata, review artwork decisions, clear storage and stop temporary
-   processes. Publish only after the owner's separate review.
+   processes. Publish only after separate maintainer review.

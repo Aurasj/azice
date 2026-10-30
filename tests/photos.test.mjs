@@ -238,10 +238,10 @@ test('canvas draw and encoder exceptions propagate unchanged without creating dr
 });
 
 test('Storage avatar upload stays JPEG/private and failed profile update removes only the new upload',async()=>{
- const failure={message:'Profile update failed'},uploads=[],removed=[];
+ const failure={code:'23514',message:'Profile update failed'},uploads=[],removed=[];
  const client={auth:{getUser:async()=>({data:{user:{id:'a'}}})},
-  storage:{from(bucket){assert.equal(bucket,'avatars');return {upload:async(path,file,options)=>{uploads.push({path,file,options});return {};},remove:async paths=>{removed.push(...paths);return {};}};}},
-  from(table){assert.equal(table,'profiles');return {update(){return {eq:async()=>({error:failure})};}};}};
+  storage:{from(bucket){assert.equal(bucket,'avatars');return {upload:async(path,file,options)=>{uploads.push({path,file,options});return {};},list:async()=>({data:[]}),remove:async paths=>{removed.push(...paths);return {};}};}},
+  from(table){assert.equal(table,'profiles');return {select(){return {eq:()=>({maybeSingle:async()=>({data:{avatar_path:null}})})};},update(){return {eq:async()=>({error:failure})};}};}};
  const blob=new Blob(['encoded'],{type:'image/jpeg'});await assert.rejects(createCloud(client).saveAvatar(blob),error=>error===failure);
  assert.equal(uploads[0].file,blob);assert.match(uploads[0].path,/^a\/[^/]+\.jpg$/);assert.deepEqual(uploads[0].options,{contentType:'image/jpeg',upsert:false});
  assert.deepEqual(removed,[uploads[0].path]);

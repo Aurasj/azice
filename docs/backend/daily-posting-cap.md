@@ -5,7 +5,7 @@
 > and [deployment status](../../DEPLOY.md) before any operator action.
 
 
-`supabase/migrations/20261024112734_daily_posting_cap.sql` is in the owner-designated
+`supabase/migrations/20261024112734_daily_posting_cap.sql` is in the recorded
 production source baseline. No separate exact-file SQL apply receipt is retained;
 Git presence is not proof of application. Before release verify the live cap/helper
 definitions read-only; do not automatically reapply. See [migration-status.md](migration-status.md).

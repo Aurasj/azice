@@ -45,6 +45,36 @@ export function createCloud(client,{recoveryClient=null,origin=null,postCleanupS
       return await task(user,version);
     }finally{postOperations.delete(user);}
   };
+  const avatarKey=user=>'azice_avatar_cleanup_v1:'+user;
+  const avatarAttempts=user=>{
+    const rows=JSON.parse(journal().getItem(avatarKey(user))||'[]');
+    if(!Array.isArray(rows)||rows.length>10||rows.some(p=>typeof p!=='string'||!p.startsWith(user+'/')||!/^[0-9a-f-]{36}\.jpg$/.test(p.slice(user.length+1))))throw Error('Avatar recovery information is invalid. Please contact support.');
+    return rows;
+  };
+  const saveAvatarAttempts=(user,rows)=>journal().setItem(avatarKey(user),JSON.stringify(rows));
+  const uncertainAvatars=user=>{
+    const rows=JSON.parse(journal().getItem(avatarKey(user)+':uncertain')||'[]');
+    if(!Array.isArray(rows)||rows.length>10||rows.some(path=>!avatarAttempts(user).includes(path)))throw Error('Avatar recovery information is invalid. Please contact support.');
+    return rows;
+  };
+  const setUncertainAvatars=(user,rows)=>journal().setItem(avatarKey(user)+':uncertain',JSON.stringify(rows));
+  const avatarPending=cause=>Object.assign(Error(cause?.message?.includes('outcome unconfirmed')?'Avatar operation is unconfirmed. Recovery information is retained; contact support before retrying.':'Avatar cleanup is pending. Choose an image again to retry safely.'),{cleanupPending:true,cause});
+  const cleanAvatars=async(user,version)=>{
+    for(const path of avatarAttempts(user)){
+      await samePostAccount(user,version);
+      // No snapshot proves a previously sent write has finished. Never reconcile
+      // uncertain operations from a profile read, even when it currently matches.
+      if(uncertainAvatars(user).includes(path))throw Error('Avatar outcome unconfirmed; recovery reference retained for support.');
+      const profile=await run(client.from('profiles').select('avatar_path').eq('id',user).maybeSingle());
+      await samePostAccount(user,version);
+      if(!profile)throw Error('Profile unavailable; avatar recovery retained.');
+      if(profile.avatar_path!==path){await run(client.storage.from('avatars').remove([path]));await samePostAccount(user,version);
+        const remaining=await run(client.storage.from('avatars').list(user,{limit:100,search:path.slice(user.length+1)}));
+        await samePostAccount(user,version);if(!Array.isArray(remaining)||remaining.length>=100||remaining.some(row=>row.name===path.slice(user.length+1)))throw Error('Avatar removal could not be verified.');}
+      setUncertainAvatars(user,uncertainAvatars(user).filter(p=>p!==path));
+      saveAvatarAttempts(user,avatarAttempts(user).filter(p=>p!==path));
+    }
+  };
   const cleanAttempts=async(user,version,resumePublish=false)=>{
     const published=[],retained=[];
     for(const attempt of readAttempts(user)){
@@ -301,14 +331,40 @@ export function createCloud(client,{recoveryClient=null,origin=null,postCleanupS
       if(!emoji)return run(client.from('reactions').delete().eq('post_id',postId).eq('user_id',u.id));
       return run(client.from('reactions').upsert({post_id:postId,user_id:u.id,emoji},{onConflict:'post_id,user_id'}));
     },
-    saveAvatar:async(file,expectedUserId=null)=>{
-      const u=await me();if(expectedUserId&&u.id!==expectedUserId)throw Error('Account changed. Please try again.');
-      const path=`${u.id}/${crypto.randomUUID()}.jpg`;
-      const {error}=await client.storage.from('avatars').upload(path,file,{contentType:'image/jpeg',upsert:false});
-      if(error)throw error;
-      try{await run(client.from('profiles').update({avatar_path:path}).eq('id',u.id));}
-      catch(error){try{await client.storage.from('avatars').remove([path]);}catch{}throw error;}
-      return `avatar:${path}`;
-    }
+    saveAvatar:(file,expectedUserId=null)=>withPostOperation(async(user,version)=>{
+      if(expectedUserId&&user!==expectedUserId)throw Error('Account changed. Please try again.');
+      try{await cleanAvatars(user,version);}catch(error){throw avatarPending(error);}
+      const path=`${user}/${crypto.randomUUID()}.jpg`;
+      // Persist before upload: an interrupted response must not lose the owned path.
+      saveAvatarAttempts(user,[...avatarAttempts(user),path]);
+      let uploaded=false,profileStarted=false,profileRejected=false;
+      try{
+        await samePostAccount(user,version);
+        // Mark uncertainty durably BEFORE sending bytes, including crash/write-failure cases.
+        setUncertainAvatars(user,[...uncertainAvatars(user),path]);
+        await run(client.storage.from('avatars').upload(path,file,{contentType:'image/jpeg',upsert:false}));uploaded=true;
+        // Keep the pre-upload uncertainty marker through the profile write.
+        await samePostAccount(user,version);
+        profileStarted=true;
+        const result=await client.from('profiles').update({avatar_path:path}).eq('id',user);
+        if(result?.error){
+          // Only an explicit returned transaction-abort SQLSTATE is definitive.
+          // Transport errors, timeouts, thrown exceptions and unknown codes retain uncertainty.
+          profileRejected=['23502','23503','23505','23514','42501','40001','40P01','P0001'].includes(result.error.code);
+          throw result.error;
+        }
+        if(!result)throw Error('Profile update response unavailable');
+        await samePostAccount(user,version);
+        setUncertainAvatars(user,uncertainAvatars(user).filter(p=>p!==path));
+        saveAvatarAttempts(user,avatarAttempts(user).filter(p=>p!==path));
+        return 'avatar:'+path;
+      }catch(error){
+        if(!uploaded||profileStarted&&!profileRejected)throw avatarPending(Error('Avatar outcome unconfirmed; recovery reference retained.'));
+        // A confirmed upload with no profile request, or a definitively aborted
+        // profile transaction, cannot later install this path through this operation.
+        try{await samePostAccount(user,version);setUncertainAvatars(user,uncertainAvatars(user).filter(p=>p!==path));await cleanAvatars(user,version);}catch(cleanupError){throw avatarPending(cleanupError);}
+        throw error;
+      }
+    })
   };
 }

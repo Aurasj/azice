@@ -22,4 +22,4 @@ browser simulation and real devices/services. Explain any skipped or blocked che
 State whether a forward migration, Edge deployment or configuration change would
 be needed. Do not apply it to production. Do not automatically bump APP_VERSION.
 Do not claim R03 is fixed or test it against production. Any service deployment,
-license/asset-rights decision or publication requires separate owner approval.
+license/asset-rights decision or publication requires separate maintainer authorization.

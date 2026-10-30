@@ -5,7 +5,7 @@
 > and [deployment status](../../DEPLOY.md) before any operator action.
 
 
-Migration: `supabase/migrations/20261023210942_add_friend_by_username.sql`. The operator reports that it has been applied to production and `public.send_username_friend_request(text)` was verified to exist. Codex has not executed remote SQL; the reviewed migration remains unchanged.
+Migration: `supabase/migrations/20261023210942_add_friend_by_username.sql`. The operator reports that it has been applied to production and `public.send_username_friend_request(text)` was verified to exist. No remote SQL was executed during that review; the reviewed migration remains unchanged.
 
 The Friends screen adds one labelled input and native Add submit button. Exact lowercase usernames may have one optional leading `@`; surrounding whitespace is trimmed. There is no search result, preview or availability query. Incoming requests remain first. Existing invite links, comment discovery, Back navigation and request actions are unchanged. Demo mode explains that real requests require Supabase.
 

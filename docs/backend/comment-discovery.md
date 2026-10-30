@@ -6,7 +6,7 @@
 
 
 Current release status is recorded in [migration-status.md](migration-status.md).
-Discovery is an existing production prerequisite in the owner's stabilization
+Discovery is an existing production prerequisite in the recorded stabilization
 scope; its exact live definition/ledger was not queried during this preparation.
 Do not reapply it. The SQL file's historical UNDEPLOYED header and the original
 hardening/deployment discussion below describe its earlier review, not pending

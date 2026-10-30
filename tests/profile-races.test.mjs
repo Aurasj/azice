@@ -142,3 +142,33 @@ test('normal onboarding preserves pending invitation navigation; stale preview c
   assert.equal(h.app.state.view,switchAccount?'feed':'invite');assert.equal(h.app.state.profile.id,switchAccount?'B':'A');
  }
 });
+
+
+test('invitation rotation ignores stale confirmation, accounts, navigation and overlapping results',async()=>{
+ for(const scenario of ['switch','return','navigate','confirm','overlap','normal','error']){
+  const h=setup(),late=deferred(),confirmation=deferred();let calls=0;
+  vm.runInContext('confirmInApp=()=>globalThis.confirmChoice();',h.context);h.context.confirmChoice=()=>scenario==='confirm'?confirmation.promise:Promise.resolve(true);
+  h.api.rotateInvite=()=>{calls++;return calls===1?late.promise:Promise.resolve('newest');};
+  h.app.state.view='friends';h.app.state.inviteToken='original';const p=h.app.handleAction({dataset:{action:'rotate-invite'}});await turn();
+  if(['switch','return','confirm','error'].includes(scenario)){h.switchTo('B');if(scenario==='return')h.switchTo('A');h.app.state.view='friends';h.app.state.inviteToken='current';}
+  if(scenario==='navigate')h.app.state.view='feed';
+  let newer;if(scenario==='overlap')newer=h.app.handleAction({dataset:{action:'rotate-invite'}});
+  if(scenario==='confirm'){confirmation.resolve(true);await p;assert.equal(calls,0);continue;}
+  if(scenario==='error')late.reject(Error('stale error'));else late.resolve('older');await p;if(newer)await newer;
+  assert.equal(h.app.state.inviteToken,scenario==='normal'?'older':scenario==='overlap'?'newest':scenario==='navigate'?'original':'current');
+ }
+});
+test('single-post refresh preserves newer selections, navigation, accounts and refresh ordering',async()=>{
+ for(const scenario of ['selection','feed','account','overlap','hydrate','normal']){
+  const h=setup(),late=deferred(),hydration=deferred();const post=id=>({id,author_id:'A',author:{display_name:'A'},kind:'sober',reason:id,published_at:new Date().toISOString(),post_photos:[],comments:[],reactions:[]});
+  h.app.state.view='post';h.app.state.openedPost=post('old');let calls=0;h.api.getPost=()=>++calls===1?late.promise:Promise.resolve(post('new'));
+  const p=h.app.refreshPosts();
+  if(scenario==='hydrate'){h.api.getProfiles=()=>hydration.promise;const v=post('old');delete v.author;late.resolve(v);await turn();}
+  if(scenario==='account'){h.switchTo('B');h.app.state.view='post';}
+  if(scenario==='feed')h.app.state.view='feed';
+  if(['selection','account','hydrate'].includes(scenario))h.app.state.openedPost=post('selected');
+  if(scenario==='overlap')await h.app.refreshPosts();
+  if(scenario==='hydrate')hydration.resolve([{id:'A',display_name:'A'}]);else late.resolve(post('old'));await p;
+  assert.equal(h.app.state.openedPost.id,scenario==='overlap'?'new':['selection','account','hydrate'].includes(scenario)?'selected':'old');assert.equal(h.app.state.view,scenario==='feed'?'feed':'post');
+ }
+});

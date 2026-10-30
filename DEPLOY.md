@@ -1,16 +1,25 @@
 # Deployment and production status
 
-**Current production:** BETA v0.1.1.0, main at
+**Production:** BETA v0.1.1.1 at `edf1427c9daa3080600ebfeb2a6f71ee8957cc88`.
+The A01–A04 stabilization patch is prepared as **BETA v0.1.1.2**, local and unreleased.
+
+
+[PR #2](https://github.com/Aurasj/azice/pull/2) deployed the refactor. Its
+[main CI run](https://github.com/Aurasj/azice/actions/runs/40955200941) passed;
+Netlify deploy `6ae3b5cd377506dda6b4462f` was published from that main commit.
+This is recorded release evidence, not a deployment performed by these instructions.
+[Architecture](docs/ARCHITECTURE.md) describes the module layout;
+[publication readiness](docs/open-source-readiness.md) lists the separate visibility gates.
+
+## Previous release evidence (2026-10-28)
+
+ BETA v0.1.1.0, main at
 `34b4766124d94aece509b444a61fd6cc157a465d`.
 [PR #1](https://github.com/Aurasj/azice/pull/1) completed open-source preparation.
 [Merge CI](https://github.com/Aurasj/azice/actions/runs/40713147522) succeeded.
 Netlify's published production deploy `6ae2103d4d6e571a86722ca6` is ready at that
 commit (read-only metadata verified 2026-10-28). This document deploys nothing.
 
-**Prepared locally:** BETA v0.1.1.1. The module/CSS/documentation refactor is local on `refactor/project-structure`,
-not a new hosted release or CI run. [Architecture](docs/ARCHITECTURE.md) describes
-the current local layout; [publication decisions](docs/open-source-readiness.md)
-must be reviewed before a branch push or visibility change.
 
 ## Existing build contract
 
@@ -26,7 +35,7 @@ must be reviewed before a branch push or visibility change.
 
 ## Hosted settings and approval boundary
 
-The owner reviewed main as the production branch, production-branch-only deploys
+The recorded deployment configuration identifies main as the production branch, production-branch-only deploys
 and disabled Deploy Previews. GitHub token/fork settings and remaining public-release
 checks are recorded in [open-source readiness](docs/open-source-readiness.md).
 Do not assume future branch/PR pushes are harmless if those settings change.

@@ -5,14 +5,14 @@
 > and [deployment status](../../DEPLOY.md) before any operator action.
 
 
-Current release decision: the owner has stopped further R03 integration testing
+The beta release decision stops further R03 integration testing
 for BETA v0.1.1.0. No Docker/VM/project work is authorized by this document.
 R03 remains an unresolved concurrency risk; physical Storage leakage is not
 confirmed. The earlier investigation/release-blocker recommendation below is
 retained as historical evidence, not a claim that a production leak occurred or
-that a fix was implemented. The owner explicitly accepted this residual risk for
+that a fix was implemented. The beta release decision accepts this residual risk for
 the beta; the limits in r03-local-integration-attempt.md still apply. Historical v0.1.0.3
-references describe prior runs; the prepared local release is v0.1.1.1. The existing accepted risk remains unresolved.
+references describe prior runs. Production is v0.1.1.1; the local stabilization patch is unreleased. The accepted risk remains unresolved.
 
 ## Decision and scope
 
@@ -29,7 +29,9 @@ Adding a profile-exists predicate, revoking refresh sessions, banning an account
 or adding a final list alone would not prove safety for already-authorized writes.
 Do not represent the characterization tests as a security fix.
 
-F01–F07, R02, both stabilization migrations and APP_VERSION 0.1.0.3 are preserved.
+## Historical investigation scope (2026-10-27)
+
+F01–F07, R02, both stabilization migrations and APP_VERSION 0.1.0.3 were preserved.
 The only R03 additions are this document and two opt-in/characterization test files.
 No secrets, credentials, deployment, schema changes or remote calls to an AziCe?
 project are involved. Public documentation/source reads are listed below.

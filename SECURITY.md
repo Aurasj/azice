@@ -1,12 +1,15 @@
 # Security policy
 
+**Production:** BETA v0.1.1.1 at `edf1427c9daa3080600ebfeb2a6f71ee8957cc88`.
+The A01–A04 stabilization patch is local and unreleased.
+
 This beta is not a guarantee of complete privacy or production readiness. The
-latest published beta (currently BETA v0.1.1.0) is the maintenance target; older
+latest published beta (currently BETA v0.1.1.1) is the maintenance target; older
 versions have no separate security-support commitment.
 
 ## Reporting
 
-Prefer GitHub's private vulnerability reporting form **when the owner enables it**:
+Prefer GitHub's private vulnerability reporting form **when enabled for this repository**:
 https://github.com/Aurasj/azice/security/advisories/new
 
 If unavailable, use the existing Safety & Privacy contact linked in README.md to
@@ -38,7 +41,7 @@ infer that acceptance makes the operation race-free. No new exploit details are
 introduced by this policy. Further R03 integration work is stopped for this beta.
 
 Native Deno and real Storage failure/recovery verification also remain incomplete.
-The owner must approve public disclosure scope and the reporting process before
+Maintainers must approve public disclosure scope and the reporting process before
 changing visibility; this file does not change any GitHub or hosted-service setting.
 
 Rendering/test limitations, including the synthetic 390×320 Activity fixture,

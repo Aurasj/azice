@@ -17,8 +17,8 @@ function setup({search='',hash='',session=new Map(),user=null,configured=false}=
 }
 
 test('header version is one explicit four-part deployed-code constant, independent of browser settings',()=>{
- const h=setup();h.shared.set('appVersion','999.0.0.0');assert.match(h.a.headerBrand(),/BETA v0\.1\.1\.1/);
- assert.equal((source.match(/0\.1\.1\.1/g)||[]).length,1);assert.match(source,/const APP_VERSION='\d+\.\d+\.\d+\.\d+'/);
+ const h=setup();h.shared.set('appVersion','999.0.0.0');assert.match(h.a.headerBrand(),/BETA v0\.1\.1\.2/);
+ assert.equal((source.match(/0\.1\.1\.2/g)||[]).length,1);assert.match(source,/const APP_VERSION='\d+\.\d+\.\d+\.\d+'/);
  assert.match(h.a.authView(),/Forgot password\?/);h.a.state.authSignUp=true;assert.doesNotMatch(h.a.authView(),/Forgot password\?/);
 });
 
